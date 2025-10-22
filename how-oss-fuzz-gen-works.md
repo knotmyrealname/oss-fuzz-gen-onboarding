@@ -96,27 +96,42 @@ experiment_targets = prepare_experiment_targets(args) // -> experiment_configs =
 if oss_fuzz_checkout.ENABLE_CACHING:
     oss_fuzz_checkout.prepare_cached_images(experiment_targets)
 ```
-### Coverage Analysis
-This spins up a process that occasionally tries to process total gains from all generated harnesses for each project to update the summary report. Essentially just allows per-project stats to be viewed as they are completed. 
-
-
+### Periodic Coverage Analysis
+This spins up a process that occasionally tries to process total gains from all generated harnesses for each project to update the summary report. Essentially, this allows per-project stats to be viewed as they are completed. 
 ```
 coverage_gains_process = Process(target=extend_report_with_coverage_gains_process)
     -> extend_report_with_coverage_gains_process()
         -> extend_report_with_coverage_gains()
             coverage_gain_dict = _process_total_coverage_gain()
-            ->
-                textcov_dict: dict[str, list[textcov.Textcov]] = {}
-for benchmark_dir in os.listdir(WORK_DIR):
-benchmark_used = benchmarklib.Benchmark.from_yaml(os.path.join(os.path.join(WORK_DIR, benchmark_dir, 'benchmark.yaml')))
-project_name = benchmark_used[0].project
-for sample in os.listdir(os.path.join(WORK_DIR, benchmark_dir, 'code-coverage-reports'))
-    summary = os.path.join(WORK_DIR, benchmark_dir, 'code-coverage-reports', sample, 'textcov')
-    for textcov_file in os.listdir(summary):
-        textcov_dict[project_name].append(...) // adds a bunch of textcov.Textcov objects - `*.covreport` files, an `all_cov.json`, and a `jacoco.xml`
-            <-
             existing_oss_fuzz_cov = introspector.query_introspector_language_stats()
         <-
     <-
 coverage_gains_process.start()
+```
+The _process_total_coverage_gain() function seems to be where the program attempts to load coverage from output files. When generating the coverage report dict, if there is an invalid coverage report (`max(total_cov.total_lines, total_existing_lines) == 0`), the warning messae "Line coverage information missing from the coverage report." is logged
+```
+textcov_dict: dict[str, list[textcov.Textcov]] = {}
+for benchmark_dir in os.listdir(WORK_DIR):
+    benchmark_used = benchmarklib.Benchmark.from_yaml(os.path.join(os.path.join(WORK_DIR, benchmark_dir, 'benchmark.yaml')))
+    project_name = benchmark_used[0].project
+    for sample in os.listdir(os.path.join(WORK_DIR, benchmark_dir, 'code-coverage-reports'))
+        summary = os.path.join(WORK_DIR, benchmark_dir, 'code-coverage-reports', sample, 'textcov')
+        for textcov_file in os.listdir(summary):
+            // Adds a bunch of textcov.Textcov objects - `*.covreport` files, an `all_cov.json`, and a `jacoco.xml`
+            textcov_dict[project_name].append(...)
+coverage_gain: dict[str, dict[str, Any]] = {}
+for project, cov_list in textcov_dict.items():
+    existing_textcov = evaluator.load_existing_textcov(project)
+    coverage_summary = evaluator.load_existing_coverage_summary(project)
+    ... // Basically just does a bunch of loading and math
+    coverate_gain[project] = {
+          'language' : oss_fuzz_checkout.get_project_language(project),
+          'coverage_diff' : total_cov.covered_lines / total_lines,
+          'coverage_relative_gain' : cov_relative_gain,
+          'coverage_ofg_total_covered_lines' : total_cov_covered_lines_before_subtraction,
+          'coverage_ofg_total_new_covered_lines' : total_cov.covered_lines,
+          'coverage_existing_total_covered_lines' : existing_textcov.covered_lines,
+          'coverage_existing_total_lines' : total_existing_lines,
+    }
+return coverage_gain    
 ```
