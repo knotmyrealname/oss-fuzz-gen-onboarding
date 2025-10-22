@@ -1,5 +1,5 @@
 # Command loop breakdown/explanation
-We will be looking at running oss-fuzz-gen's run-project.sh, running on a single project, shown as `<project>`. This may skip over some significant but not interesting functions/commands for brevity.
+We will be looking at running oss-fuzz-gen's run-project.sh, running on a single project, shown as `<project>`. This may skip over some significant but less interesting functions/commands for brevity. This mainly serves as a guide to understand the flow of oss-fuzz, rather than how everything is done in oss-fuzz.
 ## How does oss-fuzz-gen run-project.sh work?
 ### Declaration of variables
 These can be modified to change various program behaviors
@@ -61,7 +61,9 @@ add_to_json_report(outdir: ./results, key: 'num_samples', value: 1)
 ```
 ### Introspector API Endpoint setup
 Effectively just sets up all of the API endpoint variables within the introspector - e.g. `INTROSPECTOR_CFG = f'{endpoint}/annotated-cfg'".
+```
 introspector.set_introspector_endpoints(endpoint: introspector.DEFAULT_INTROSPECTOR_ENDPOINT = 'https://introspector.oss-fuzz.com/api')
+```
 ### Cloning oss-fuzz to work/oss-fuzz
 This step clones the oss-fuzz repository if it does not exist and syncs oss-fuzz data (not fully sure how this step really works). It then prepares the oss-fuzz directory for experiments by adding a glcoudignore, sets up a venv environment, and installs oss-fuzz requirements.
 ```
@@ -71,25 +73,50 @@ run_one_experiment.prepare(oss-fuzz-dir: 'work/oss-fuzz')\
     oss_fuzz_checkout.postprocess_oss_fuzz()
     <-
 ```
-### 
-This step creates a list of experiment targets based on a provided benchmark yaml. If a benchmark yaml was not provided, the introspector will generate benchmarks based on heuristics provided `--generate-benchmarks`. If `--generate-benchmarks` is also blank, it'll try to use project yamls specified in `--benchmarks-directory`.  
+### Benchmark Creation and Caching
+This step creates a list of experiment targets based on a provided benchmark yaml. If a benchmark yaml was not provided, the introspector will generate benchmarks based on heuristics provided `--generate-benchmarks`. If `--generate-benchmarks` is also blank, it'll try to use project yamls specified in `--benchmarks-directory`. These project yamls are then converted into experiment classes and returned in an iterable list. If caching is enabled (set via environment variable `ENABLE_CACHING={0,1}`), docker images will be cached if there is a post-build script.
 ```
-experiment_targets = prepare_experiment_targets(args) // -> list[benchmarklib.Benchmark]
+experiment_targets = prepare_experiment_targets(args) // -> experiment_configs == list[benchmarklib.Benchmark]
     ->
     if args.benchmark_yaml:
-    ...
+    // just uses specified benchmark yaml
     else:
         if args.generate_benchmarks:
-            generate_benchmarks(args: args)
+            generate_benchmarks(args: args) // sets args.benchmarks_directory to point to new benchmarks
                 ->
                 project_lang = oss_fuzz_checkout.get_project_language(project)
                 benchmarks = introspector.populate_benchmarks_using_introspector(project, project_lang, args.generate_benchmarks_max, benchmark_oracles)
                 benchmarklib.Benchmark.to_yaml(benchmarks, outdir=benchmark_dir)
                 <-
+        // uses whatever yamls are in args.benchmarks_directory
     experiment_configs = []
     for benchmark_file in benchmark_yamls:
         experiment_configs.extend(benchmarklib.Benchmark.from_yaml(benchmark_file))
-    <-
+    <- 
 if oss_fuzz_checkout.ENABLE_CACHING:
     oss_fuzz_checkout.prepare_cached_images(experiment_targets)
+```
+### Coverage Analysis
+This spins up a process that occasionally tries to process total gains from all generated harnesses for each project to update the summary report. Essentially just allows per-project stats to be viewed as they are completed. 
+
+
+```
+coverage_gains_process = Process(target=extend_report_with_coverage_gains_process)
+    -> extend_report_with_coverage_gains_process()
+        -> extend_report_with_coverage_gains()
+            coverage_gain_dict = _process_total_coverage_gain()
+            ->
+                textcov_dict: dict[str, list[textcov.Textcov]] = {}
+for benchmark_dir in os.listdir(WORK_DIR):
+benchmark_used = benchmarklib.Benchmark.from_yaml(os.path.join(os.path.join(WORK_DIR, benchmark_dir, 'benchmark.yaml')))
+project_name = benchmark_used[0].project
+for sample in os.listdir(os.path.join(WORK_DIR, benchmark_dir, 'code-coverage-reports'))
+    summary = os.path.join(WORK_DIR, benchmark_dir, 'code-coverage-reports', sample, 'textcov')
+    for textcov_file in os.listdir(summary):
+        textcov_dict[project_name].append(...) // adds a bunch of textcov.Textcov objects - `*.covreport` files, an `all_cov.json`, and a `jacoco.xml`
+            <-
+            existing_oss_fuzz_cov = introspector.query_introspector_language_stats()
+        <-
+    <-
+coverage_gains_process.start()
 ```
