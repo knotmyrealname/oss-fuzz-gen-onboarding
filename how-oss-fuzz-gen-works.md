@@ -172,5 +172,11 @@ add_to_json_report(args.work_dir, 'total_run_time', str(timedelta(seconds=end - 
 coverage_gain_dict = _process_total_coverage_gain()
 _print_experiment_results(experiment_results, coverage_gain_dict)
 ```
+### Some output analysis
+
 ## How does run_one_experiment.py work?
-run_one_experiment.py is a helper file that is not meant to be called by the CLI. 
+run_one_experiment.py is a helper file that is not meant to be called by the CLI. It is run via the following function, returning a set of experiment results
+```
+run(benchmark: Benchmark, model: models.LLM, args: argparse.Namespace, work_dirs: WorkDirs) -> Optional[AggregatedResult]:
+```
+
