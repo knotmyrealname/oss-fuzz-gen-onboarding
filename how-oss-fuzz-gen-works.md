@@ -50,7 +50,7 @@ LLM_NUM_EVA=4 LLM_NUM_EXP=4 ./run_all_experiments.py --model=gpt-5 -g far-reach-
 |    | --delay | 0 |  | |
 |-p | --prompt-builder | "DEFAULT" |  | |
 |-ag | --agent | False |  | |
-|    | --custome-pipeline | False |  | |
+|    | --custom-pipeline | "" |  | |
 |-mr | --max-round | 100 |  | |
 
 ### Report Generation
