@@ -102,11 +102,11 @@ def run_on_args():
     cv.set_defaults(func=run_ossfuzz)
 
     # Run corpus generation
-    pe = subparsers.add_parser('--corpus-gen', help='Run command a')
-    pe.add_argument('-project', type=str, default='all', help='Argument for a')
-    pe.add_argument('-model', type=str, default="gpt-5", help="")
-    pe.add_argument('-temperature', type=int, default=1, help="")
-    pe.set_defaults(func=run_corpusgen)
+    cg = subparsers.add_parser('--corpus-gen', help='Run command a')
+    cg.add_argument('-project', type=str, default='all', help='Argument for a')
+    cg.add_argument('-model', type=str, default="gpt-5", help="")
+    cg.add_argument('-temperature', type=int, default=1, help="")
+    cg.set_defaults(func=run_corpusgen)
 
 }
 
