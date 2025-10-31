@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 Create build images and fuzz the specified project with oss-fuzz
 using infra/helper.py.
 """
-def run_project(self, project: str = None):
+def run_project(project: str = None):
     path_to_helper = os.path.join(OSS_FUZZ_DIR, "infra", "helper.py")
     path_to_fuzzers = os.path.join(OSS_FUZZ_DIR, "build", "out", project)
     commands = [

@@ -2,11 +2,14 @@ import shlex
 import sys
 import os
 import logging
+from openai import OpenAI
 
 import harness_gen
 import oss_fuzz_hook
 
 BASE_DIR = os.path.dirname(__file__)
+DEFAULT_MODEL = "gpt-5"
+TEMPERATURE = 1
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO,
@@ -45,70 +48,86 @@ def run_interactive():
     ##TODO
     print("interactive")
 
-def run_noninteractive(repo_url: str, email: str):
+def run_noninteractive(args):
     ##TODO
     print(f"noninteractive {repo_url} {email}")   
 
-def run_harnessgen(project: str):
-    ##TODO
+def run_harnessgen(args):
+    harness_gen.generate_harness(args.model, args.project, args.temperature)
     print(f"harnessgen {project}")
 
-def run_ossfuzz(project: str):
-    ##TODO
+def run_ossfuzz(args):
+    oss_fuzz_hook.run_project(project)
     print(f"ossfuzz {project}")
 
-def run_corpusgen(project: str):
+def run_corpusgen(args):
     ##TODO
     print(f"corpusgen {project}")
 
-def project_exists(project: str):
+def project_exists(args):
     project_location = os.path.join(BASE_DIR, f"work/oss-fuzz/projects/{project}")
     return os.path.exists(project_location)
 
-def usage(info: str):
-    print(f"Usage: {info}")
+
+## Note that this will use a small amount of API credits
+def model_valid(model, temperature):
+    client = OpenAI(api_key=os.environ["OPENAI_API_KEY"])
+    try:
+        response = client.responses.create(model=model, 
+                                           input="test", 
+                                           max_output_tokens=5,
+                                           temperature=TEMPERATURE)
+    except:
+        return False
+    return True
+
+def run_on_args():
+    parser = argparse.ArgumentParser(
+        prog='ofgo',
+        description='Onboard project into OSS-Fuzz-Gen',
+        #add_help=False
+    )
+
+    # Global -h/--help flag
+    #parser.add_argument('-h', '--help', action='store_true', help='Show this help message and exit')
+
+    subparsers = parser.add_subparsers(dest='command', help='Available commands')
+
+    # Run the default
+    ni = subparsers.add_parser('--default', help='Full onboarding with harness and corpii generation')
+    ni.add_argument('-repo', type=str, help='Project repo URL')
+    ni.add_argument('-email', type=str, help='Project maintainer email')
+    ni.add_argument('-model', type=str, default="gpt-5", help="")
+    ni.add_argument('-temperature', type=int, default=1, help="")
+    ni.set_defaults(func=run_noninteractive)
+
+    # Run only OSS-Fuzz-gen
+    pe = subparsers.add_parser('--pre-existing', help='Run command a')
+    pe.add_argument('-project', type=str, default='all', help='Argument for a')
+    pe.add_argument('-model', type=str, default="gpt-5", help="")
+    pe.add_argument('-temperature', type=int, default=1, help="")
+    pe.set_defaults(func=run_harnessgen)
+
+    # Run OSS-Fuzz
+    cv = subparsers.add_parser('--coverage', help='Run command b')
+    cv.add_argument('-project', type=str, default='all', help='Argument for b')
+    cv.set_defaults(func=run_ossfuzz)
+
+    # Run corpus generation
+    pe = subparsers.add_parser('--corpus-gen', help='Run command a')
+    pe.add_argument('-project', type=str, default='all', help='Argument for a')
+    pe.add_argument('-model', type=str, default="gpt-5", help="")
+    pe.add_argument('-temperature', type=int, default=1, help="")
+    pe.set_defaults(func=run_corpusgen)
+
+}
 
 def main():
-    args = sys.argv
-
-    if len(args) == 1:
+    if len(sys.argv) == 1:
         run_interactive()
-    elif args[1] == "--pre-existing":
-        if len(args) == 3:
-            if project_exists(args):
-                run_harnessgen(project)
-            else:
-                usage("TODO")
-        else:
-            usage("TODO")
-    elif args[1] == "--coverage":
-        if len(args) == 3:
-            if project_exists(args):
-                run_ossfuzz(project)
-            else:
-                usage("TODO")
-        else:
-            usage("TODO")
-    elif args[1] == "--corpus-gen":
-        if len(args) == 3:
-            if project_exists(args):
-                run_corpusgen(project)
-            else:
-                usage("TODO")
-        else:
-            usage("TODO")
-    else:
-        if len(args) == 3:
-            if valid_repo(args[2]):
-                if valid_email(args[3]):
-                    run_noninteractive(validate_repo,args[3])
-                else:
-                    usage("TODO")
-            else:
-                usage("TODO")
-        else:
-            usage("TODO")
-        
+    else{
+        run_on_args()
+    }    
 
 if __name__ == "__main__":
     main()
