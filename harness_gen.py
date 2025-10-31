@@ -18,14 +18,14 @@ OSS_FUZZ_GEN_DIR = os.path.join(BASE_DIR, "work/oss-fuzz-gen")
 REPORT_DIR = os.path.join(BASE_DIR, "report")
 
 logger = logging.getLogger(__name__)
+logging.basicConfig(level=logging.INFO,
+                       format='%(asctime)s - %(levelname)s - %(message)s',
+                       datefmt='%Y-%m-%d %H:%M:%S')
 
 def generate_harness(model : str, project : str, temperature : float = 0.4):
-    logging.basicConfig(level=logging.INFO,
-                       format=run_all_experiments.LOG_FMT,
-                       datefmt='%Y-%m-%d %H:%M:%S')
     
     ## Checks to make sure project is valid (assumes model has already been checked by main method)
-    project_location = os.path.join(BASE_DIR, "work/oss-fuzz/projects/{project}")
+    project_location = os.path.join(BASE_DIR, f"work/oss-fuzz/projects/{project}")
     if not os.path.exists(project_location):
         logger.info(f"Invalid Project ({project}) at {project_location}")
 
