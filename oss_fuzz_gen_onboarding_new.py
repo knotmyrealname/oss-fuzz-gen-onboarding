@@ -9,7 +9,6 @@ import oss_fuzz_hook
 
 BASE_DIR = os.path.dirname(__file__)
 DEFAULT_MODEL = "gpt-5"
-TEMPERATURE = 1
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO,
@@ -32,17 +31,6 @@ def validate_repo(url) :
     if parsed.scheme != 'https':
         raise ValueError(f'URL {url} not HTTPS')
     return shlex.quote(url)
-
-def valid_repo(url) :
-    regex = re.compile(r'https?://[^\s/$.?#].[^\s]*')
-    if not bool(regex.fullmatch(url)):
-        return False
-    parsed = urlparse(url)
-    if parsed.scheme != 'https':
-        return False
-    if not parsed.netloc.endswith('github.com') and not parsed.netloc.endswith('gitlab.com'):
-        return False
-    return True
 
 def run_interactive():
     ##TODO
@@ -76,7 +64,7 @@ def model_valid(model, temperature):
         response = client.responses.create(model=model, 
                                            input="test", 
                                            max_output_tokens=5,
-                                           temperature=TEMPERATURE)
+                                           temperature=temperature)
     except:
         return False
     return True
