@@ -1,0 +1,6 @@
+work/
+__pycache__
+logs/
+results/
+report/
+benchmark-sets/
