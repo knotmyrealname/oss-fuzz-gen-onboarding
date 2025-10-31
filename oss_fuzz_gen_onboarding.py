@@ -1,106 +1,120 @@
-#!/usr/bin/env python3
-import argparse
-import sys
-import re
-from urllib.parse import urlparse
 import shlex
-from email_validator import validate_email, EmailNotValidError
-from commands import a, b
+import sys
+import os
+import logging
+from openai import OpenAI
 
-DEFAULT_CMD = 'a'
-KNOWN_COMMANDS = {'a', 'b', 'full', 'h'}
+import harness_gen
+import oss_fuzz_hook
 
-def check_email(email):
+BASE_DIR = os.path.dirname(__file__)
+DEFAULT_MODEL = "gpt-5"
+
+logger = logging.getLogger(__name__)
+logging.basicConfig(level=logging.INFO,
+                       format='%(asctime)s - %(levelname)s - %(message)s',
+                       datefmt='%Y-%m-%d %H:%M:%S')
+
+def valid_email(email):
     regex = r'^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$'
-    if not bool(re.fullmatch(regex, email)):
-        raise ValueError(f'Invalid email address {email}')
-    try:
-        valid_email = validate_email(email)
-        return valid_email.email
-    except EmailNotValidError as e:
-        raise ValueError(f"Invalid email: {email}") from e
+    if bool(re.fullmatch(regex, email)):
+        return True
+    return False
 
-def check_url(url):
+def validate_repo(url) :
     regex = re.compile(r'https?://[^\s/$.?#].[^\s]*')
     if not bool(regex.fullmatch(url)):
         raise ValueError(f'Invalid repo URL {url}')
     parsed = urlparse(url)
-    if parsed.scheme != 'https':
-        raise ValueError(f'URL {url} not HTTPS')
     if not parsed.netloc.endswith('github.com') and not parsed.netloc.endswith('gitlab.com'):
         raise ValueError(f'URL {url} not GitHub or GitLab')
+    if parsed.scheme != 'https':
+        raise ValueError(f'URL {url} not HTTPS')
     return shlex.quote(url)
 
-def build_parser():
+def run_interactive():
+    ##TODO
+    print("interactive")
+
+def run_noninteractive(args):
+    ##TODO
+    print(f"noninteractive {repo_url} {email}")   
+
+def run_harnessgen(args):
+    harness_gen.generate_harness(args.model, args.project, args.temperature)
+    print(f"harnessgen {project}")
+
+def run_ossfuzz(args):
+    oss_fuzz_hook.run_project(project)
+    print(f"ossfuzz {project}")
+
+def run_corpusgen(args):
+    ##TODO
+    print(f"corpusgen {project}")
+
+def project_exists(args):
+    project_location = os.path.join(BASE_DIR, f"work/oss-fuzz/projects/{project}")
+    return os.path.exists(project_location)
+
+
+## Note that this will use a small amount of API credits
+def model_valid(model, temperature):
+    client = OpenAI(api_key=os.environ["OPENAI_API_KEY"])
+    try:
+        response = client.responses.create(model=model, 
+                                           input="test", 
+                                           max_output_tokens=5,
+                                           temperature=temperature)
+    except:
+        return False
+    return True
+
+def run_on_args():
     parser = argparse.ArgumentParser(
         prog='ofgo',
         description='Onboard project into OSS-Fuzz-Gen',
-        add_help=False
+        #add_help=False
     )
 
     # Global -h/--help flag
-    parser.add_argument('-h', '--help', action='store_true', help='Show this help message and exit')
+    #parser.add_argument('-h', '--help', action='store_true', help='Show this help message and exit')
 
     subparsers = parser.add_subparsers(dest='command', help='Available commands')
 
-    # full command example
-    full = subparsers.add_parser('full', help='Full onboarding with harness and corpii generation')
-    full.add_argument('--repo', type=str, help='Project repo URL')
-    full.add_argument('--email', type=str, help='Project maintainer email')
+    # Run the default
+    ni = subparsers.add_parser('--default', help='Full onboarding with harness and corpii generation')
+    ni.add_argument('-repo', type=str, help='Project repo URL')
+    ni.add_argument('-email', type=str, help='Project maintainer email')
+    ni.add_argument('-model', type=str, default="gpt-5", help="")
+    ni.add_argument('-temperature', type=int, default=1, help="")
+    ni.set_defaults(func=run_noninteractive)
 
-    # command a
-    a_p = subparsers.add_parser('a', help='Run command a')
-    a_p.add_argument('--aarg', type=str, default='all', help='Argument for a')
+    # Run only OSS-Fuzz-gen
+    pe = subparsers.add_parser('--pre-existing', help='Run command a')
+    pe.add_argument('-project', type=str, default='all', help='Argument for a')
+    pe.add_argument('-model', type=str, default="gpt-5", help="")
+    pe.add_argument('-temperature', type=int, default=1, help="")
+    pe.set_defaults(func=run_harnessgen)
 
-    # command b
-    b_p = subparsers.add_parser('b', help='Run command b')
-    b_p.add_argument('--barg', type=str, default='all', help='Argument for b')
+    # Run OSS-Fuzz
+    cv = subparsers.add_parser('--coverage', help='Run command b')
+    cv.add_argument('-project', type=str, default='all', help='Argument for b')
+    cv.set_defaults(func=run_ossfuzz)
 
-    return parser
+    # Run corpus generation
+    cg = subparsers.add_parser('--corpus-gen', help='Run command a')
+    cg.add_argument('-project', type=str, default='all', help='Argument for a')
+    cg.add_argument('-model', type=str, default="gpt-5", help="")
+    cg.add_argument('-temperature', type=int, default=1, help="")
+    cg.set_defaults(func=run_corpusgen)
+
 
 def main():
-    parser = build_parser()
-
-    # Args after script name
-    raw_argv = sys.argv[1:]
-
-    # Handle help in args
-    if '-h' in raw_argv or '--help' in raw_argv:
-        parser.print_help()
-        sys.exit(0)
-
-    # No args default to full
-    if not raw_argv:
-        argv = ['full']
-    else:
-        # Use subcommand as-is
-        if raw_argv[0] in KNOWN_COMMANDS:
-            argv = raw_argv
-        # Inject default for args
-        else:
-            argv = ['full'] + raw_argv
-
-    # Parse arguments
-    args = parser.parse_args(argv)
-
-    # Dispatch
-    if args.command == 'a':
-        a.run(args)
-    elif args.command == 'b':
-        b.run(args)
-    elif args.command == 'full':
-        try:
-            if not args.repo or not args.email:
-                raise ValueError('Missing arguments --repo and --email for full onboarding')
-            email = check_email(args.email)
-            repo = check_url(args.repo)
-        except ValueError as ve:
-            print(f'Error: {ve}')
-            sys.exit(1)
-        print(f'Running full onboarding for repo: {repo}, maintainer: {email}')
-    else:
-        parser.print_help()
-        sys.exit(1)
+    if len(sys.argv) == 1:
+        run_interactive()
+    else{
+        run_on_args()
+    }    
 
 if __name__ == "__main__":
     main()

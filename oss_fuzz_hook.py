@@ -8,9 +8,10 @@ import os, subprocess, logging
 BASE_DIR = os.path.dirname(__file__)
 OSS_FUZZ_DIR = os.path.join(BASE_DIR, "work/oss-fuzz")
 
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
-
+logging.basicConfig(level=logging.INFO,
+                       format='%(asctime)s - %(levelname)s - %(message)s',
+                       datefmt='%Y-%m-%d %H:%M:%S')
 
 """
 Create build images and fuzz the specified project with oss-fuzz
