@@ -1,3 +1,18 @@
+#!/usr/bin/env python3
+# Copyright 2025 Chainguard
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import shlex
 import sys
 import os
@@ -8,12 +23,20 @@ import harness_gen
 import oss_fuzz_hook
 
 BASE_DIR = os.path.dirname(__file__)
-DEFAULT_MODEL = "gpt-5"
+DEFAULT_MODEL = "gpt-4o-mini"
+
+## System-wide params
+OSS_FUZZ_DIR = os.path.join(BASE_DIR, "oss-fuzz")
+OSS_FUZZ_GEN_DIR = os.path.join(BASE_DIR, "oss-fuzz-gen")
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO,
                        format='%(asctime)s - %(levelname)s - %(message)s',
                        datefmt='%Y-%m-%d %H:%M:%S')
+
+## Green
+def log(output):
+    logger.info(f"\033[92moss_fuzz_gen_onboarding:\033[00m {output}")
 
 def valid_email(email):
     regex = r'^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$'
@@ -55,7 +78,6 @@ def run_corpusgen(args):
 def project_exists(args):
     project_location = os.path.join(BASE_DIR, f"work/oss-fuzz/projects/{project}")
     return os.path.exists(project_location)
-
 
 ## Note that this will use a small amount of API credits
 def model_valid(model, temperature):
@@ -112,9 +134,8 @@ def run_on_args():
 def main():
     if len(sys.argv) == 1:
         run_interactive()
-    else{
+    else :
         run_on_args()
-    }    
 
 if __name__ == "__main__":
     main()
