@@ -72,8 +72,8 @@ def run_noninteractive(args):
         check_email(args.email)
         args.repo = sanitize_repo(args.repo)
         run_basis_gen(args)
-        run_harnessgen(args)
-        run_ossfuzz(args)
+        #run_harnessgen(args)
+        #run_ossfuzz(args)
     except ValueError as ve:
         print(f'Error: {ve}')
         sys.exit(1)
