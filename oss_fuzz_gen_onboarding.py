@@ -16,11 +16,15 @@
 import shlex
 import sys
 import os
+import re
 import logging
-from openai import OpenAI
+from email_validator import validate_email, EmailNotValidError
+from urllib.parse import urlparse
 
+from openai import OpenAI
 import harness_gen
 import oss_fuzz_hook
+import generate_project_basis from project_basis_gen
 
 BASE_DIR = os.path.dirname(__file__)
 DEFAULT_MODEL = "gpt-4o-mini"
@@ -34,17 +38,20 @@ logging.basicConfig(level=logging.INFO,
                        format='%(asctime)s - %(levelname)s - %(message)s',
                        datefmt='%Y-%m-%d %H:%M:%S')
 
-## Green
-def log(output):
+def log(output): ## Green rep
     logger.info(f"\033[92moss_fuzz_gen_onboarding:\033[00m {output}")
 
-def valid_email(email):
+def check_email(email):
     regex = r'^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$'
-    if bool(re.fullmatch(regex, email)):
-        return True
-    return False
+    if not bool(re.fullmatch(regex, email)):
+        raise ValueError(f'Invalid email address {email}')
+    try:
+        valid_email = validate_email(email)
+        return valid_email.email
+    except EmailNotValidError as e:
+        raise ValueError(f'Invalid email address: {email}') from e
 
-def validate_repo(url) :
+def sanitize_repo(url) :
     regex = re.compile(r'https?://[^\s/$.?#].[^\s]*')
     if not bool(regex.fullmatch(url)):
         raise ValueError(f'Invalid repo URL {url}')
@@ -60,8 +67,21 @@ def run_interactive():
     print("interactive")
 
 def run_noninteractive(args):
-    ##TODO
     print(f"noninteractive {repo_url} {email}")   
+    try:
+        check_email(args.email)
+        args.repo = sanitize_repo(args.repo)
+        run_basis_gen(args)
+        #run_harnessgen(args)
+        #run_ossfuzz(args)
+    except ValueError as ve:
+        print(f'Error: {ve}')
+        sys.exit(1)
+
+def run_basis_gen(args):
+    repo_dir = generate_project_basis(args.repo, args.email)
+    print(f'basisgen {args.repo} {args.email}')
+    print(f'gen at {repo_dir}')
 
 def run_harnessgen(args):
     harness_gen.generate_harness(args.model, args.project, args.temperature)
@@ -95,41 +115,55 @@ def run_on_args():
     parser = argparse.ArgumentParser(
         prog='ofgo',
         description='Onboard project into OSS-Fuzz-Gen',
-        #add_help=False
+        add_help=False
     )
 
     # Global -h/--help flag
-    #parser.add_argument('-h', '--help', action='store_true', help='Show this help message and exit')
+    parser.add_argument('-h', '--help', action='store_true', help='Show this help message and exit')
 
     subparsers = parser.add_subparsers(dest='command', help='Available commands')
 
     # Run the default
-    ni = subparsers.add_parser('--default', help='Full onboarding with harness and corpii generation')
-    ni.add_argument('-repo', type=str, help='Project repo URL')
-    ni.add_argument('-email', type=str, help='Project maintainer email')
-    ni.add_argument('-model', type=str, default="gpt-5", help="")
-    ni.add_argument('-temperature', type=int, default=1, help="")
+    ni = subparsers.add_parser('default', help='Full onboarding with harness and corpii generation')
+    ni.add_argument('--repo', type=str, help='Project repo URL')
+    ni.add_argument('--email', type=str, help='Project maintainer email')
+    ni.add_argument('--model', type=str, default='gpt-5', help='OpenAI model name')
+    ni.add_argument('--temperature', type=int, default=1, help='Temperature for OpenAI model')
     ni.set_defaults(func=run_noninteractive)
 
     # Run only OSS-Fuzz-gen
-    pe = subparsers.add_parser('--pre-existing', help='Run command a')
-    pe.add_argument('-project', type=str, default='all', help='Argument for a')
-    pe.add_argument('-model', type=str, default="gpt-5", help="")
-    pe.add_argument('-temperature', type=int, default=1, help="")
+    pe = subparsers.add_parser('pre-existing', help='Run OSS-Fuzz-Gen on pre-existing project')
+    pe.add_argument('--project', type=str, default='all', help='Project name')
+    pe.add_argument('--model', type=str, default='gpt-5', help='OpenAI model name')
+    pe.add_argument('--temperature', type=int, default=1, help='Temperature for OpenAI model')
     pe.set_defaults(func=run_harnessgen)
 
     # Run OSS-Fuzz
-    cv = subparsers.add_parser('--coverage', help='Run command b')
-    cv.add_argument('-project', type=str, default='all', help='Argument for b')
+    cv = subparsers.add_parser('coverage', help='Get coverage reports for project')
+    cv.add_argument('--project', type=str, default='all', help='Project name')
     cv.set_defaults(func=run_ossfuzz)
 
     # Run corpus generation
-    cg = subparsers.add_parser('--corpus-gen', help='Run command a')
-    cg.add_argument('-project', type=str, default='all', help='Argument for a')
-    cg.add_argument('-model', type=str, default="gpt-5", help="")
-    cg.add_argument('-temperature', type=int, default=1, help="")
+    cg = subparsers.add_parser('corpus-gen', help='Generate corpora for a project')
+    cg.add_argument('--project', type=str, default='all', help='Project name')
+    cg.add_argument('--model', type=str, default='gpt-5', help='OpenAI model name')
+    cg.add_argument('--temperature', type=int, default=1, help='Temperature for OpenAI model')
     cg.set_defaults(func=run_corpusgen)
 
+    # Handle command arguments
+    arguments = sys.argv[1:]
+
+    # Handle --help and -h
+    if '-h' in arguments or '--help' in arguments:
+        parser.print_help()
+        sys.exit(0)
+    
+    # Handle all options
+    args = parser.parse_args(argv)
+    if args.command is None:
+        print("Error: No command provided. Use --help or -h for usage details.")
+        sys.exit(1)
+    args.func(args)
 
 def main():
     if len(sys.argv) == 1:
