@@ -97,7 +97,7 @@ def consolidate_harnesses(project: str, file_ext: str, number: int = 1):
         for name in dirs:
             if re.match(project_dir_regex, name):
                 source_file = os.path.join(OSS_FUZZ_PROJECTS_DIR, name, "%02d.fuzz_target" % (number))
-                dest_file = os.path.join(consolidated_dir, "fuzz_harness-%02d_%02d%s" % (number, num_found, file_ext))
+                dest_file = os.path.join(OSS_FUZZ_PROJECTS_DIR, name, "fuzz_harness-%02d_%02d%s" % (number, num_found, file_ext))
                 shutil.copyfile(source_file, dest_file)
                 num_found += 1
 
