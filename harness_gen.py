@@ -73,32 +73,34 @@ def generate_harness(model: str, project: str, temperature: float = 0.4):
     python -m http.server -b 127.0.0.1 5000 -d {REPORT_DIR}''')
     log("You may have to change the IP addresss (127.0.0.1) or port (5000) to suit your needs.")
 
-def consolidate_harnesses(project: str, file_ext: str, number: int = 1):
-    ## Creates directory to consilidate harnesses outside of oss-fuzz
-    consolidated_dir = os.path.join(CONSOLIDATE_DIR, project)
-    if not os.path.exists(consolidated_dir):
-        os.makedirs(consolidated_dir)
-
-    ## Tries to copy over existing project data
+def consolidate_harnesses(project: str, file_ext: str, sample_num: int = 1):
+    ## Check if the project exists
     project_dir = os.path.join(OSS_FUZZ_PROJECTS_DIR, project)
     if not os.path.exists(project_dir):
-        log(f"Cannot locate base project for consolidation at {project_dir}")
+        log(f"Cannot locate project for consolidation at {project_dir}")
         return
+
+    ## Creates directory to consilidate generated harnesses outside of oss-fuzz for easy access
+    consolidated_dir = os.path.join(CONSOLIDATE_DIR, project)
+    if not os.path.exists(consolidated_dir):
+        if not os.path.exists(CONSOLIDATE_DIR):
+            os.makedirs(CONSOLIDATE_DIR)
+        os.symlink(project_dir, consolidated_dir)
+    
+    ## Clean up prevous fuzz targets
+    old_fuzz_target_regex = fr"fuzz_harness-\d\d_\d\d.{file_ext}"
     for root, dirs, files in os.walk(project_dir):
         for name in files:
-            source_file = os.path.join(project_dir, name)
-            dest_file = os.path.join(consolidated_dir, name)
-            shutil.copyfile(source_file, dest_file)
+            if re.match(old_fuzz_target_regex, name):
+                os.remove(os.path.join(project_dir, name))
 
     ## Tries to copy over generated files for a specific run sample
-    project_dir_regex = fr"{project}-{project}\..*-{number}"
+    project_dir_regex = fr"{project}-{project}\..*-{sample_num}"
     num_found = 1
     for root, dirs, files in os.walk(OSS_FUZZ_PROJECTS_DIR):
         for name in dirs:
             if re.match(project_dir_regex, name):
-                source_file = os.path.join(OSS_FUZZ_PROJECTS_DIR, name, "%02d.fuzz_target" % (number))
-                dest_file = os.path.join(OSS_FUZZ_PROJECTS_DIR, name, "fuzz_harness-%02d_%02d%s" % (number, num_found, file_ext))
+                source_file = os.path.join(OSS_FUZZ_PROJECTS_DIR, name, "%02d.fuzz_target" % (sample_num))
+                dest_file = os.path.join(project_dir, "fuzz_harness-%02d_%02d.%s" % (sample_num, num_found, file_ext))
                 shutil.copyfile(source_file, dest_file)
                 num_found += 1
-
-    
