@@ -1,7 +1,7 @@
 # An Easy way to get Started with Fuzzing
 This collection of scripts serves as an entry into fuzzing with OSS-Fuzz, simplifying the whole process into one command line argument. We utilize existing functionality within OSS-Fuzz and OSS-Fuzz gen to make this happen to maximize compatibility, with some custom code to enable automatic corpus generation. Note that, although we will be generating fuzzing harnesses, you will still have to **manually** add them to OSS-Fuzz via a pull request.
 
-**NOTE: From our testing, OSS-Fuzz and OSS-Fuzz-gen DOES NOT work with Windows, and the same will be true for OFGO**
+**NOTE: From our testing, OSS-Fuzz and OSS-Fuzz-gen DOES NOT work with Windows, and the same will be true for OFGO. This entire stack is designed for Linux - any support for other operating systems will be purely coincidental.**
 
 ## What is Fuzzing? 
 At a high level, fuzzing is an automated software testing technique that runs programs with a large amount of mutated and randomly generated data to attempt to induce a fail condition/crash (which may lead to a bug/security vulnerability). 
