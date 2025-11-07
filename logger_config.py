@@ -1,7 +1,6 @@
 import logging
 import sys
 
-
 def setup_logger(name: str = "onboarding", level: int = logging.INFO) -> logging.Logger:
     """
     Sets up a consistent logger for the entire project.

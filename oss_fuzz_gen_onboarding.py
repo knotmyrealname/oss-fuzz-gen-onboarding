@@ -21,11 +21,12 @@ import argparse
 import logging
 from email_validator import validate_email, EmailNotValidError
 from urllib.parse import urlparse
+import openai
 
-from openai import OpenAI
 import harness_gen
 import oss_fuzz_hook
-import generate_project_basis from project_basis_gen
+from project_basis_gen import generate_project_basis
+from logger_config import setup_logger
 
 BASE_DIR = os.path.dirname(__file__)
 DEFAULT_MODEL = "gpt-4o-mini"
@@ -34,10 +35,7 @@ DEFAULT_MODEL = "gpt-4o-mini"
 OSS_FUZZ_DIR = os.path.join(BASE_DIR, "oss-fuzz")
 OSS_FUZZ_GEN_DIR = os.path.join(BASE_DIR, "oss-fuzz-gen")
 
-logger = logging.getLogger(__name__)
-logging.basicConfig(level=logging.INFO,
-                       format='%(asctime)s - %(levelname)s - %(message)s',
-                       datefmt='%Y-%m-%d %H:%M:%S')
+logger = setup_logger(__name__)
 
 def log(output): ## Green rep
     logger.info(f"\033[92moss_fuzz_gen_onboarding:\033[00m {output}")
@@ -84,15 +82,14 @@ def run_basis_gen(args):
     repo_dir = generate_project_basis(args.repo, args.email)
 
 def run_harnessgen(args):
-    if not model_valid(args.model, args.temperature):
-        raise ValueError(f'Invalid model {args.model} or parameters')
-    if not project_exists(args):
+    validate_model(args.model, args.temperature)
+    if not project_exists(args.project):
         raise ValueError(f'Project {args.project} does not exist in OSS-Fuzz')
     log(f'Generating harness for {args.project}')
     harness_gen.generate_harness(args.model, args.project, args.temperature)
 
 def run_ossfuzz(args):
-    if not project_exists(args):
+    if not project_exists(args.project):
         raise ValueError(f'Project {args.project} does not exist in OSS-Fuzz')
     log(f'Running OSS-Fuzz on {project}')
     oss_fuzz_hook.run_project(project)
@@ -101,21 +98,30 @@ def run_corpusgen(args):
     ##TODO
     print(f"corpusgen {project}")
 
-def project_exists(args):
-    project_location = os.path.join(BASE_DIR, f"work/oss-fuzz/projects/{project}")
+def project_exists(project):
+    project_location = os.path.join(BASE_DIR, f"oss-fuzz/projects/{project}")
     return os.path.exists(project_location)
 
-## Note that this will use a small amount of API credits
-def model_valid(model, temperature):
-    client = OpenAI(api_key=os.environ["OPENAI_API_KEY"])
+## Note that this will use a small amount of API credits if successful
+def validate_model(model, temperature):
+    ## Get API key
+    try:
+        client = openai.OpenAI(api_key=os.environ["OPENAI_API_KEY"])
+    except:
+        log(r'''OPENAI_API_KEY is not exported. You can export your key using the command: 
+export OPENAI_API_KEY={your_api_key}''')
+        sys.exit(1)
+        
+    ## Check model
     try:
         response = client.responses.create(model=model, 
                                            input="test", 
-                                           max_output_tokens=5,
+                                           max_output_tokens=16,
                                            temperature=temperature)
-    except:
-        return False
-    return True
+    except Exception as e:
+        log(f'''Failed to generate test response. OpenAI API response:
+{e}''')
+    return 
 
 def run_on_args():
     parser = argparse.ArgumentParser(
@@ -133,14 +139,14 @@ def run_on_args():
     ni = subparsers.add_parser('default', help='Full onboarding with harness and corpii generation')
     ni.add_argument('--repo', type=str, help='Project repo URL')
     ni.add_argument('--email', type=str, help='Project maintainer email')
-    ni.add_argument('--model', type=str, default='gpt-5', help='OpenAI model name')
+    ni.add_argument('--model', type=str, default=DEFAULT_MODEL, help='OpenAI model name')
     ni.add_argument('--temperature', type=int, default=1, help='Temperature for OpenAI model')
     ni.set_defaults(func=run_noninteractive)
 
     # Run only OSS-Fuzz-gen
     pe = subparsers.add_parser('pre-existing', help='Run OSS-Fuzz-Gen on pre-existing project')
     pe.add_argument('--project', type=str, default='all', help='Project name')
-    pe.add_argument('--model', type=str, default='gpt-5', help='OpenAI model name')
+    pe.add_argument('--model', type=str, default=DEFAULT_MODEL, help='OpenAI model name')
     pe.add_argument('--temperature', type=int, default=1, help='Temperature for OpenAI model')
     pe.set_defaults(func=run_harnessgen)
 
@@ -152,7 +158,7 @@ def run_on_args():
     # Run corpus generation
     cg = subparsers.add_parser('corpus-gen', help='Generate corpora for a project')
     cg.add_argument('--project', type=str, default='all', help='Project name')
-    cg.add_argument('--model', type=str, default='gpt-5', help='OpenAI model name')
+    cg.add_argument('--model', type=str, default=DEFAULT_MODEL, help='OpenAI model name')
     cg.add_argument('--temperature', type=int, default=1, help='Temperature for OpenAI model')
     cg.set_defaults(func=run_corpusgen)
 
