@@ -91,8 +91,8 @@ def run_harnessgen(args):
 def run_ossfuzz(args):
     if not project_exists(args.project):
         raise ValueError(f'Project {args.project} does not exist in OSS-Fuzz')
-    log(f'Running OSS-Fuzz on {project}')
-    oss_fuzz_hook.run_project(project)
+    log(f'Running OSS-Fuzz on {args.project}')
+    oss_fuzz_hook.run_project(args.project)
 
 def run_corpusgen(args):
     ##TODO
