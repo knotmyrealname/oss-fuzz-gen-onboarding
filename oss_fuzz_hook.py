@@ -35,12 +35,14 @@ using infra/helper.py.
 """
 def run_project(project: str = None):
     path_to_helper = os.path.join(main.OSS_FUZZ_DIR, "infra", "helper.py")
+    log(f"Running {project} with OSS-FUZZ.")
     commands = [
         ["python3", path_to_helper, "pull_images"],
         ["python3", path_to_helper, "build_image", project],
         ["python3", path_to_helper, "build_fuzzers", project]
     ]
     for c in commands:
+        log(f"Building images for {project}")
         if c == ["python3", path_to_helper, "build_image", project]:
             res = subprocess.run(c, input="y\n", text=True)
         else:
@@ -61,10 +63,9 @@ def run_project(project: str = None):
     for i in os.listdir(path_to_fuzzers):
         if(i.startswith("fuzz_") and '.' not in i):
             fuzz_name = i
-            log(f"Fuzzer found: {fuzz_name}")
             break
     if fuzz_name is None:
         log("Error: No fuzzer found.")
         return False
-    
+    log(f"Running {fuzz_name}.")
     subprocess.run(["python3", path_to_helper, "run_fuzzer", project, fuzz_name,"--", "-max_total_time=10", "-runs=1000"])
