@@ -65,10 +65,10 @@ def sanitize_repo(url) :
 
 def run_interactive():
     ##TODO
-    log('Running SkeleFuzz in interactive mode')
+    log('Running OFGO in interactive mode')
 
 def run_noninteractive(args):
-    log('Running SkeleFuzz fully')
+    log('Running OFGO fully')
     try:
         check_email(args.email)
         args.repo = sanitize_repo(args.repo)
@@ -165,7 +165,7 @@ def run_on_args():
         sys.exit(0)
     
     # Handle all options
-    args = parser.parse_args(argv)
+    args = parser.parse_args(arguments)
     if args.command is None:
         print("Error: No command provided. Use --help or -h for usage details.")
         sys.exit(1)
