@@ -17,13 +17,15 @@
 OSS-Fuzz Runner
 Will run existing or newly generated OSS-Fuzz harnesses
 """
-import os, subprocess, logging
+import os
+import subprocess
 
 import oss_fuzz_gen_onboarding as main
+from logger_config import setup_logger
 
 BASE_DIR = os.path.dirname(__file__)
 
-logger = logging.getLogger(__name__)
+logger = setup_logger(__name__)
 
 ## Purple
 def log(output):
