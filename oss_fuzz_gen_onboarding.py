@@ -17,6 +17,7 @@ import shlex
 import sys
 import os
 import re
+import argparse
 import logging
 from email_validator import validate_email, EmailNotValidError
 from urllib.parse import urlparse
@@ -64,32 +65,37 @@ def sanitize_repo(url) :
 
 def run_interactive():
     ##TODO
-    print("interactive")
+    log('Running OFGO in interactive mode')
 
 def run_noninteractive(args):
-    print(f"noninteractive {repo_url} {email}")   
+    log('Running OFGO fully')
     try:
         check_email(args.email)
         args.repo = sanitize_repo(args.repo)
         run_basis_gen(args)
-        #run_harnessgen(args)
-        #run_ossfuzz(args)
+        run_harnessgen(args)
+        run_ossfuzz(args)
     except ValueError as ve:
         print(f'Error: {ve}')
         sys.exit(1)
 
 def run_basis_gen(args):
+    log(f'Generating project structure with {args.repo}, {args.email}')
     repo_dir = generate_project_basis(args.repo, args.email)
-    print(f'basisgen {args.repo} {args.email}')
-    print(f'gen at {repo_dir}')
 
 def run_harnessgen(args):
+    if not model_valid(args.model, args.temperature):
+        raise ValueError(f'Invalid model {args.model} or parameters')
+    if not project_exists(args):
+        raise ValueError(f'Project {args.project} does not exist in OSS-Fuzz')
+    log(f'Generating harness for {args.project}')
     harness_gen.generate_harness(args.model, args.project, args.temperature)
-    print(f"harnessgen {project}")
 
 def run_ossfuzz(args):
+    if not project_exists(args):
+        raise ValueError(f'Project {args.project} does not exist in OSS-Fuzz')
+    log(f'Running OSS-Fuzz on {project}')
     oss_fuzz_hook.run_project(project)
-    print(f"ossfuzz {project}")
 
 def run_corpusgen(args):
     ##TODO
@@ -159,7 +165,7 @@ def run_on_args():
         sys.exit(0)
     
     # Handle all options
-    args = parser.parse_args(argv)
+    args = parser.parse_args(arguments)
     if args.command is None:
         print("Error: No command provided. Use --help or -h for usage details.")
         sys.exit(1)
