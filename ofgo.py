@@ -61,8 +61,32 @@ def sanitize_repo(url) :
     return shlex.quote(url)
 
 def run_interactive():
-    ##TODO
     log('Running OFGO in interactive mode')
+    try:
+        project = None
+        choice = input('Is the project already in OSS-Fuzz? (y/n): ').strip().lower()
+        if choice == 'y':
+            project = input('Enter project name in OSS-Fuzz: ').strip()
+        repo = input('Enter project repo URL: ').strip()
+        email = input('Enter project maintainer email: ').strip()
+        check_email(email)
+        repo = sanitize_repo(repo)
+        model = input(f'Enter OpenAI model name (default: {DEFAULT_MODEL}): ').strip()
+        if model == '':
+            model = DEFAULT_MODEL
+        temp = input('Enter OpenAI model temperature (default: 1): ').strip()
+        if temp == '':
+            temperature = 1
+        else:
+            temperature = int(temp)
+        args = argparse.Namespace(repo=repo, email=email, model=model, temperature=temperature)
+        run_basis_gen(args)
+        run_harnessgen(args)
+        if project and project != '':
+            run_ossfuzz(args)
+    except ValueError as ve:
+        print(f'Error: {ve}')
+        sys.exit(1)
 
 def run_noninteractive(args):
     log('Running OFGO fully')
