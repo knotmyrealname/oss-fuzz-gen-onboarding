@@ -22,7 +22,7 @@ import shutil
 
 sys.path.insert(0, "./oss-fuzz-gen")
 import run_all_experiments
-import oss_fuzz_gen_onboarding as main
+import ofgo as main
 
 ## Variable declaration
 BASE_DIR = os.path.dirname(__file__)

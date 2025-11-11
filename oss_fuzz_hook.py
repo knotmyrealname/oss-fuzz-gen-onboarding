@@ -19,7 +19,7 @@ Will run existing or newly generated OSS-Fuzz harnesses
 import os
 import subprocess
 
-import oss_fuzz_gen_onboarding as main
+import ofgo as main
 from logger_config import setup_logger
 
 BASE_DIR = os.path.dirname(__file__)
