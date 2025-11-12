@@ -22,7 +22,7 @@ import shutil
 
 sys.path.insert(0, "./oss-fuzz-gen")
 import run_all_experiments
-import oss_fuzz_gen_onboarding as main
+import ofgo as main
 
 ## Variable declaration
 BASE_DIR = os.path.dirname(__file__)
@@ -79,19 +79,20 @@ def consolidate_harnesses(project: str, file_ext: str, sample_num: int = 1):
         log(f"Cannot locate project for consolidation at {project_dir}")
         return
 
-    ## Creates directory to consilidate generated harnesses outside of oss-fuzz for easy access
+    ## Creates directory to consilidate generated harnesses outside of oss-fuzz for easy access and persistence
     consolidated_dir = os.path.join(CONSOLIDATE_DIR, project)
     if not os.path.exists(consolidated_dir):
         if not os.path.exists(CONSOLIDATE_DIR):
             os.makedirs(CONSOLIDATE_DIR)
-        os.symlink(project_dir, consolidated_dir)
+        shutil.move(project_dir, consolidated_dir)
+        os.symlink(consolidated_dir, project_dir)
     
     ## Clean up prevous fuzz targets
     old_fuzz_target_regex = fr"fuzz_harness-\d\d_\d\d.{file_ext}"
-    for root, dirs, files in os.walk(project_dir):
+    for root, dirs, files in os.walk(consolidated_dir):
         for name in files:
             if re.match(old_fuzz_target_regex, name):
-                os.remove(os.path.join(project_dir, name))
+                os.remove(os.path.join(consolidated_dir, name))
 
     ## Tries to copy over generated files for a specific run sample
     project_dir_regex = fr"{project}-{project}\..*-{sample_num}"
@@ -100,6 +101,6 @@ def consolidate_harnesses(project: str, file_ext: str, sample_num: int = 1):
         for name in dirs:
             if re.match(project_dir_regex, name):
                 source_file = os.path.join(OSS_FUZZ_PROJECTS_DIR, name, "%02d.fuzz_target" % (sample_num))
-                dest_file = os.path.join(project_dir, "fuzz_harness-%02d_%02d.%s" % (sample_num, num_found, file_ext))
+                dest_file = os.path.join(consolidated_dir, "fuzz_harness-%02d_%02d.%s" % (sample_num, num_found, file_ext))
                 shutil.copyfile(source_file, dest_file)
                 num_found += 1
