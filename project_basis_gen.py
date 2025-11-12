@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# Copyright 2025
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -19,206 +18,174 @@ project_basis_gen.py
 Creates the Dockerfile, project.yaml, and build.sh for a given github repository and maintainer email
 
 Usage:
-    python3 project_basis_gen.py <repo_url> <user_email> [work_root]
+    python3 project_basis_gen.py <repo_url> <maintainer_email> [--work WORK_ROOT] [--model MODEL]
 
-Assumes these repos/folders are present locally:
-  - ./oss-fuzz-gen
-  - ./oss-fuzz
+Example:
+    python3 project_basis_gen.py https://github.com/stephenberry/glaze valid@email.com
+    python3 project_basis_gen.py https://github.com/stephenberry/glaze valid@email.com --work work --model gpt-4o-mini
+Notes:
+    - Assumes you have followed the setup guide: USAGE.md
+    - work_root defaults to current directory
+    - model defaults to 'gpt-4o'
 """
 
 import os
 import sys
+import yaml
+import shutil
 import subprocess
 import textwrap
-import yaml
+import argparse
+from datetime import datetime
 from logger_config import setup_logger
 
+# -------------------------------------------------------------------
+# Logging functionality
+# -------------------------------------------------------------------
 logger = setup_logger(__name__)
 
 def log(msg: str) -> None:
     logger.info(f"\033[94m{msg}\033[00m")
 
-# -----------------------------------------------------------------------------
-# Initialization & Imports
-# -----------------------------------------------------------------------------
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-OSS_FUZZ_GEN_PATH = os.path.join(BASE_DIR, "oss-fuzz-gen")
-BUILD_GEN_PATH = os.path.join(OSS_FUZZ_GEN_PATH, "experimental", "build_generator")
-
-if BUILD_GEN_PATH not in sys.path:
-    sys.path.append(BUILD_GEN_PATH)
-
-try:
-    from build_script_generator import extract_build_suggestions
-    import manager
-except ImportError:
-    log("[!] Could not import OSS-Fuzz-Gen modules.")
-    log("    Ensure 'oss-fuzz-gen' exists in this directory.")
-    sys.exit(1)
-
-
-# -----------------------------------------------------------------------------
-# Environment Setup
-# Create local directories representing root directories used in manager
-# -----------------------------------------------------------------------------
-def setup_local_env(repo_dir: str) -> str:
-    """Create local OUT/SRC/WORK directories and set environment variables."""
-    paths = {
-        "OUT": os.path.join(repo_dir, "out"),
-        "SRC": os.path.join(repo_dir, "src"),
-        "WORK": os.path.join(repo_dir, "work_tmp"),
-    }
-    for p in paths.values():
-        os.makedirs(p, exist_ok=True)
-    os.environ.update(paths)
-    logger.debug(f"Local env set: OUT={paths['OUT']} SRC={paths['SRC']} WORK={paths['WORK']}")
-    return paths["OUT"]
-
-
-# -----------------------------------------------------------------------------
-# /out Patch
-# non root users cannot modify /out on linux, 
-#  so we patch every access to a local /out directory
-# -----------------------------------------------------------------------------
-class OutPathRedirector:
-    """Temporarily redirect /out references inside manager.py to a local folder."""
-    def __init__(self, local_out: str):
-        self.local_out = local_out
-        self._real_makedirs = manager.os.makedirs
-        self._real_join = manager.os.path.join
-
-    def _rewrite_path(self, path: str) -> str:
-        return path.replace("/out", self.local_out, 1) if path.startswith("/out") else path
-
-    def _safe_makedirs(self, path, *args, **kwargs):
-        return self._real_makedirs(self._rewrite_path(path), *args, **kwargs)
-
-    def _safe_join(self, a, *p):
-        a = self._rewrite_path(a)
-        p = tuple(self._rewrite_path(x) for x in p)
-        return self._real_join(a, *p)
-
-    def apply(self):
-        manager.os.makedirs = self._safe_makedirs
-        manager.os.path.join = self._safe_join
-        log(f"[+] Redirecting /out → {self.local_out}")
-
-    def restore(self):
-        manager.os.makedirs = self._real_makedirs
-        manager.os.path.join = self._real_join
-
-
-# -----------------------------------------------------------------------------
-# Fake BuildWorker used to simulate Docker environment for manager call
-# -----------------------------------------------------------------------------
-class FakeBuildWorker:
-    """Minimal mock of OSS-Fuzz-Gen's BuildWorker"""
-    def __init__(self, build_script: str, build_suggestion_obj):
-        self.build_script = build_script
-        self.build_suggestion = build_suggestion_obj
-        self.executable_files_build = {'refined-static-libs': []}
-
-
-# -----------------------------------------------------------------------------
-# Core Logic
-# -----------------------------------------------------------------------------
-def generate_project_basis(repo_url: str, user_email: str, work_root: str = "work") -> str:
-    """Main workflow: clone repo, generate build.sh, invoke OSS-Fuzz-Gen manager, patch project.yaml"""
+# -------------------------------------------------------------------
+# Core helper functions
+# -------------------------------------------------------------------
+def run_runner(repo_url: str, work_root: str, model: str) -> str:
+    """Calls OSS-Fuzz-Gen’s experimental runner to generate config files, returns the path of the generated files."""
+    # Get repo name to fuzz and local paths to oss-fuzz(gen), to pass to runner command
     repo_name = os.path.basename(repo_url).replace(".git", "")
-    repo_dir = os.path.join(work_root, "oss-fuzz-gen", "work", repo_name)
-    os.makedirs(repo_dir, exist_ok=True)
+    oss_fuzz_path = os.path.join(work_root, "oss-fuzz")
+    oss_fuzz_gen_path = os.path.join(work_root, "oss-fuzz-gen")
+    
+    # Runner command expects repo name as a text file
+    input_path = os.path.join(oss_fuzz_gen_path, "input.txt")
+    with open(input_path, "w") as f:
+        f.write(repo_url + "\n")
 
-    # Clone or reuse existing repo
-    if not os.path.isdir(os.path.join(repo_dir, ".git")):
-        log(f"[+] Cloning repository: {repo_url}")
-        subprocess.run(["git", "clone", "--depth", "1", repo_url, repo_dir], check=True)
-    else:
-        log("[=] Repository already cloned. Skipping clone step.")
+    # generated-builds-tmp will be the output of the program - expected $MODEL to be set as an environment variable
+    cmd = [
+        "python3", "-m", "experimental.build_generator.runner",
+        "-i", "input.txt",
+        "-o", "generated-builds-tmp",
+        "-m", model,
+        "--oss-fuzz", oss_fuzz_path,
+    ]
 
-    # Generate build.sh
-    log("[+] Detecting build system and generating build.sh ...")
-    suggestions = extract_build_suggestions(repo_dir, "auto-build-")
-    if not suggestions:
-        raise RuntimeError("No build system detected.")
-    build_script, _, build_suggestion = suggestions[0]
-
-    build_path = os.path.join(repo_dir, "build.sh")
-    with open(build_path, "w") as f:
-        f.write(build_script)
-    os.chmod(build_path, 0o755)
-
-    # Setup local environment and patch /out usage to a local directory
-    local_out = setup_local_env(repo_dir)
-    redirector = OutPathRedirector(local_out)
-    redirector.apply()
-
-    # Create oss-fuzz projects folder for output of manager
-    oss_fuzz_projects = os.path.join(work_root, "oss-fuzz", "projects")
-    os.makedirs(oss_fuzz_projects, exist_ok=True)
-
-    log("[+] Generating Dockerfile and project.yaml via OSS-Fuzz-Gen ...")
+    # Run the oss-fuzz-gen command to create the 3 files
+    log(f"Running OSS-Fuzz-Gen for {repo_name} using model: {model}")
     try:
-        fake_worker = FakeBuildWorker(build_script, build_suggestion)
-        manager.create_clean_oss_fuzz_from_empty(
-            github_repo=repo_url,
-            build_worker=fake_worker,
-            language="c++",
-            test_dir=oss_fuzz_projects,
-        )
-    finally:
-        redirector.restore()
+        subprocess.run(cmd, cwd=oss_fuzz_gen_path, check=True)
+    except subprocess.CalledProcessError as e:
+        raise RuntimeError(f"Runner failed with exit code {e.returncode}")
 
-    # Locate output
-    latest_out = max(
-        (os.path.join(local_out, d) for d in os.listdir(local_out) if d.startswith("empty-build-")),
-        key=lambda p: os.path.getmtime(p),
-        default=None,
-    )
-    if not latest_out:
-        raise RuntimeError("Generation succeeded but no 'empty-build-*' folder found under OUT")
-
-    # Update project.yaml
-    project_yaml = os.path.join(latest_out, "project.yaml")
-    if os.path.isfile(project_yaml):
-        with open(project_yaml, "r") as f:
-            data = yaml.safe_load(f) or {}
-        data.update({
-            "primary_contact": user_email,
-            "fuzzing_engines": ["libfuzzer"],
-            "sanitizers": ["address", "undefined"],
-            "architectures": ["x86_64"],
-        })
-        with open(project_yaml, "w") as f:
-            yaml.dump(data, f, sort_keys=False)
-        log(f"[+] Updated maintainer email → {user_email}")
-    else:
-        log("[=] Warning: project.yaml not found in generated output.")
-
-    log(f"[+] Generated OSS-Fuzz config in: {latest_out}")
-    return latest_out
+    # Locate the generated files
+    gen_dir = os.path.join(oss_fuzz_gen_path, "generated-builds-tmp", "oss-fuzz-projects")
+    if not os.path.isdir(gen_dir) or not os.listdir(gen_dir):
+        raise RuntimeError("No generated build directories found — check OSS-Fuzz-Gen output")
+    
+    # Get the latest files for this project
+    latest = max((os.path.join(gen_dir, d) for d in os.listdir(gen_dir)), key=os.path.getmtime)
+    log(f"Latest generated project: {latest}")
+    return latest
 
 
-# -----------------------------------------------------------------------------
-# CLI Entrypoint
-# -----------------------------------------------------------------------------
+def copy_outputs(latest_dir: str, base_out: str) -> None:
+    """Copy Dockerfile, build.sh, and project.yaml into the output directory."""
+    os.makedirs(base_out, exist_ok=True)
+    copied = []
+    for fname in ("Dockerfile", "build.sh", "project.yaml"):
+        src = os.path.join(latest_dir, fname)
+        dst = os.path.join(base_out, fname)
+        if os.path.exists(src):
+            shutil.copy2(src, dst)
+            copied.append(fname)
+    if not copied:
+        raise RuntimeError("No output found in generated directory")
+    log(f"Copied: {', '.join(copied)} to {base_out}")
+
+
+def patch_project_yaml(yaml_path: str, email: str) -> None:
+    """Update the maintainer email in project.yaml."""
+    if not os.path.exists(yaml_path):
+        log("project.yaml not found. skipping patch")
+        return
+    with open(yaml_path, "r") as f:
+        y = yaml.safe_load(f) or {}
+    y["primary_contact"] = email
+    with open(yaml_path, "w") as f:
+        yaml.dump(y, f, sort_keys=False)
+    log(f"Updated maintainer email to: {email}")
+
+
+# -------------------------------------------------------------------
+# Main workflow
+# -------------------------------------------------------------------
+def generate_project_basis(repo_url: str, email: str, work_root: str, model: str) -> None:
+    """Calls functions to generate the 3 files, copy outputs out of oss-fuzz-gen, and patch the project.yaml"""
+    repo_name = os.path.basename(repo_url).replace(".git", "")
+    timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    base_out = os.path.join(os.getcwd(), "outputs", f"{repo_name}-{timestamp}")
+
+    log(f"[+] Starting OSS-Fuzz basis generation for {repo_name}")
+    latest_generated = run_runner(repo_url, work_root, model)
+    copy_outputs(latest_generated, base_out)
+    patch_project_yaml(os.path.join(base_out, "project.yaml"), email)
+
+    log(f"Generation complete for {repo_name}")
+    log(f"Output saved under: {base_out}")
+
+
+# -------------------------------------------------------------------
+# CLI entrypoint
+# -------------------------------------------------------------------
 def usage():
-    print(textwrap.dedent("""
+    """Usage guide passed into --help for argparse"""
+    return textwrap.dedent("""
         Usage:
-            python3 project_basis_gen.py <repo_url> <user_email> [work_root]
-    """).strip())
+            python3 project_basis_gen.py <repo_url> <maintainer_email> [--work WORK_ROOT] [--model MODEL]
 
-if __name__ == "__main__":
-    if len(sys.argv) < 3 or sys.argv[1] in {"-h", "--help"}:
-        usage()
+        Example:
+            python3 project_basis_gen.py https://github.com/stephenberry/glaze valid@email.com
+            python3 project_basis_gen.py https://github.com/stephenberry/glaze valid@email.com --work work --model gpt-4o
+
+        Notes:
+            - Assumes you have followed the setup guide: USAGE.md
+            - work_root defaults to current directory
+            - model defaults to 'gpt-4o'
+    """).strip()
+
+def main():
+    """Parse arguments as described above, and call generate_project_basis with user input."""
+    parser = argparse.ArgumentParser(
+        description=usage(),
+        formatter_class=argparse.RawTextHelpFormatter,
+    )
+    parser.add_argument("repo_url", help="GitHub repository URL")
+    parser.add_argument("maintainer_email", help="Maintainer email for project.yaml")
+    parser.add_argument(
+        "--work",
+        dest="work_root",
+        default=os.getcwd(),
+        help="Optional working directory (default: current directory)",
+    )
+    parser.add_argument(
+        "--model",
+        dest="model",
+        default="gpt-4o",
+        help="OpenAI model name (default: gpt-4o)",
+    )
+
+    if len(sys.argv) == 1:
+        parser.print_help(sys.stderr)
         sys.exit(0)
 
-    repo_url, user_email = sys.argv[1], sys.argv[2]
-    work_root = sys.argv[3] if len(sys.argv) > 3 else "work"
+    args = parser.parse_args()
 
     try:
-        generate_project_basis(repo_url, user_email, work_root)
+        generate_project_basis(args.repo_url, args.maintainer_email, args.work_root, args.model)
     except Exception as e:
-        log(f"\n[!] Error: {e}")
-        print("    Run with --help for usage instructions.\n")
+        log(f"Error: {e}")
         sys.exit(1)
-
+    
+if __name__ == "__main__":
+    main()
