@@ -41,7 +41,17 @@ def log(output):
     logger.info(f"\033[96mharness_gen:\033[00m {output}")
 
 def generate_harness(model: str, project: str, temperature: float = 0.4):
-    
+    '''
+    Generates OSS-Fuzz-gen harnesses for a given project using a specified model and temperature.
+
+    Args:
+        model (str): The llm model to use for harness generation.
+        project (str): The project to generate harnesses for. Expects the file to be at ofgo/
+        temperature (float, optional): The temperature setting for the model. Defaults to 0.4.
+
+    Returns
+        None
+    ''' 
     ## Checks to make sure project is valid (assumes model has already been checked by main method)
     project_location = os.path.join(main.OSS_FUZZ_DIR, f"projects/{project}")
     if not os.path.exists(project_location):
@@ -50,6 +60,7 @@ def generate_harness(model: str, project: str, temperature: float = 0.4):
     log(f'''Beginning OSS-Fuzz-gen harness generation. This may take a long time''')
     start = time.time()
     
+    ## Runs OSS-Fuzz-gen with custom params
     subprocess.run([os.path.join(main.OSS_FUZZ_GEN_DIR, "run_all_experiments.py"),
                     f"--model={model}",
                     f"--generate-benchmarks={BENCHMARK_HEURISTICS}",
@@ -65,6 +76,7 @@ def generate_harness(model: str, project: str, temperature: float = 0.4):
     log(f"Your generated harnesses can be found in {project}-{project}..." +
                 "as XX.fuzz_target. To use them, you can move them to your main folder and rename them.")
 
+    ## Get report from OSS-Fuzz-gen run
     os.chdir(main.OSS_FUZZ_GEN_DIR)
     subprocess.run(["python","-m", "report.web", "-r", WORK_DIR, "-o", REPORT_DIR])
     log(f"Report Generated in {REPORT_DIR}")
@@ -73,6 +85,18 @@ def generate_harness(model: str, project: str, temperature: float = 0.4):
     log("You may have to change the IP addresss (127.0.0.1) or port (5000) to suit your needs.")
 
 def consolidate_harnesses(project: str, file_ext: str, sample_num: int = 1):
+    '''
+    Retrieves generated harnesses for a given project and consolidates them into a single directory outside of oss-fuzz.
+
+    Args:
+        project (str): The OSS-Fuzz project to consolidate generated harnesses for.
+        file_ext (str): The file extension of the harness files (e.g., "cpp", "c", or "py").
+        sample_num (int, optional): The sample number to consolidate. Defaults to 1.
+
+    Returns:
+        None
+    '''
+
     ## Check if the project exists
     project_dir = os.path.join(OSS_FUZZ_PROJECTS_DIR, project)
     if not os.path.exists(project_dir):
