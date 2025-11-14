@@ -33,12 +33,63 @@ WORK_DIR = os.path.join(BASE_DIR, "results")
 REPORT_DIR = os.path.join(BASE_DIR, "report")
 CONSOLIDATE_DIR = os.path.join(BASE_DIR, "gen-projects")
 OSS_FUZZ_PROJECTS_DIR = os.path.join(main.OSS_FUZZ_DIR, "projects")
+GENERATED_HARNESS_DIR = os.path.join(CONSOLIDATE_DIR, "samples")
 
 logger = logging.getLogger(__name__)
+
+## Dict of supported languages and their file extensions
+language_exts = {
+    'c': 'c',
+    'c++': 'cpp',
+    'go': 'go',
+    'javascript': 'js',
+    'jvm': 'java',
+    'python': 'py',
+    'ruby': 'rb',
+    'rust': 'rs',
+    'swift': 'swift'
+}
 
 ## Cyan
 def log(output):
     logger.info(f"\033[96mharness_gen:\033[00m {output}")
+
+def get_ext_from_project(project) -> str:
+    project_yaml = os.path.join(OSS_FUZZ_PROJECTS_DIR, project, "project.yaml")
+
+    language = ""
+    with open(project_yaml, "r") as f:
+        yaml_content = f.read().splitlines()
+        for line in yaml_content:
+            if line.startswith("language:"):
+                language = line.split(":", 1)[1].strip()
+
+    if language in language_exts:
+        return language_exts[language]
+    elif language != "":
+        log("Unable to identify language. Ensure your project.yaml is in oss-fuzz/projects and has a properly configured project.yaml.")
+        sys.exit(1)
+    else:
+        log(f"Language not supported: {language}.")
+        sys.exit(1)
+
+def clean_old_harnesses(project):
+    '''
+    Removes generated harnesses for a given project
+
+    Args:
+        project (str): The project to clean up
+    
+    Returns:
+        None
+    '''
+    log("Cleaning old harnesses")
+    consolidated_dir = os.path.join(CONSOLIDATE_DIR, project)
+    old_fuzz_target_regex = fr"fuzz_harness-\d\d_\d\d.(.)*"
+    for root, dirs, files in os.walk(consolidated_dir):
+        for name in files:
+            if re.match(old_fuzz_target_regex, name):
+                os.remove(os.path.join(consolidated_dir, name))
 
 def generate_harness(model: str, project: str, temperature: float = 0.4):
     '''
@@ -49,13 +100,33 @@ def generate_harness(model: str, project: str, temperature: float = 0.4):
         project (str): The project to generate harnesses for. Expects the file to be at ofgo/
         temperature (float, optional): The temperature setting for the model. Defaults to 0.4.
 
-    Returns
+    Returns:
         None
     ''' 
-    ## Checks to make sure project is valid (assumes model has already been checked by main method)
-    project_location = os.path.join(main.OSS_FUZZ_DIR, f"projects/{project}")
-    if not os.path.exists(project_location):
-        log(f"Cannot find Project folder for {project} at {project_location}")
+    
+    ## Sets up folders for persistence
+    persistent_project_dir = os.path.join(CONSOLIDATE_DIR, project)
+    project_dir = os.path.join(OSS_FUZZ_PROJECTS_DIR, project)
+    if not os.path.exists(GENERATED_HARNESS_DIR):
+        os.makedirs(GENERATED_HARNESS_DIR)
+    if not os.path.exists(persistent_project_dir) and os.path.exists(project_dir):
+        shutil.move(project_dir, persistent_project_dir)
+        os.symlink(persistent_project_dir, project_dir, target_is_directory=True)
+    elif os.path.exists(persistent_project_dir):
+        if os.path.exists(project_dir):
+            shutil.rmtree(project_dir)
+        os.symlink(persistent_project_dir, project_dir, target_is_directory=True)
+    else:
+        log(f"Cannot find Project folder for {project} at {project_dir} or any generated projects.")
+        sys.exit(1)
+        
+    ## Cleans up existing project folders
+    project_dir_regex = fr"{project}-.*-\d*"
+    for root, dirs, files in os.walk(GENERATED_HARNESS_DIR):
+        for name in dirs:
+            if re.match(project_dir_regex, name):
+                shutil.rmtree(os.path.join(GENERATED_HARNESS_DIR, name))
+    clean_old_harnesses(project)
 
     log(f'''Beginning OSS-Fuzz-gen harness generation. This may take a long time''')
     start = time.time()
@@ -84,13 +155,20 @@ def generate_harness(model: str, project: str, temperature: float = 0.4):
     python -m http.server -b 127.0.0.1 5000 -d {REPORT_DIR}''')
     log("You may have to change the IP addresss (127.0.0.1) or port (5000) to suit your needs.")
 
-def consolidate_harnesses(project: str, file_ext: str, sample_num: int = 1):
+    ## Move generated data to a folder outside oss-fuzz for persistence
+    for root, dirs, files in os.walk(OSS_FUZZ_PROJECTS_DIR):
+        for name in dirs:
+            if re.match(project_dir_regex, name):
+                harness_dir = os.path.join(OSS_FUZZ_PROJECTS_DIR, name)
+                target_dir = os.path.join(GENERATED_HARNESS_DIR, name)
+                shutil.move(harness_dir, target_dir)
+
+def consolidate_harnesses(project: str, sample_num: int = 1):
     '''
-    Retrieves generated harnesses for a given project and consolidates them into a single directory outside of oss-fuzz.
+    Retrieves generated harnesses for a given project and consolidates them into a single directory (gen-projects) outside of oss-fuzz.
 
     Args:
         project (str): The OSS-Fuzz project to consolidate generated harnesses for.
-        file_ext (str): The file extension of the harness files (e.g., "cpp", "c", or "py").
         sample_num (int, optional): The sample number to consolidate. Defaults to 1.
 
     Returns:
@@ -107,24 +185,22 @@ def consolidate_harnesses(project: str, file_ext: str, sample_num: int = 1):
     consolidated_dir = os.path.join(CONSOLIDATE_DIR, project)
     if not os.path.exists(consolidated_dir):
         if not os.path.exists(CONSOLIDATE_DIR):
-            os.makedirs(CONSOLIDATE_DIR)
+            log("No projects found: cannot consolidate")
         shutil.move(project_dir, consolidated_dir)
-        os.symlink(consolidated_dir, project_dir)
+        os.symlink(consolidated_dir, project_dir, target_is_directory=True)
     
     ## Clean up prevous fuzz targets
-    old_fuzz_target_regex = fr"fuzz_harness-\d\d_\d\d.{file_ext}"
-    for root, dirs, files in os.walk(consolidated_dir):
-        for name in files:
-            if re.match(old_fuzz_target_regex, name):
-                os.remove(os.path.join(consolidated_dir, name))
+    clean_old_harnesses(project)
+
+    file_ext = get_ext_from_project(project)
 
     ## Tries to copy over generated files for a specific run sample
-    project_dir_regex = fr"{project}-{project}\..*-{sample_num}"
+    project_dir_regex = fr"{project}-.*-\d*"
     num_found = 1
-    for root, dirs, files in os.walk(OSS_FUZZ_PROJECTS_DIR):
+    for root, dirs, files in os.walk(GENERATED_HARNESS_DIR):
         for name in dirs:
             if re.match(project_dir_regex, name):
-                source_file = os.path.join(OSS_FUZZ_PROJECTS_DIR, name, "%02d.fuzz_target" % (sample_num))
+                source_file = os.path.join(GENERATED_HARNESS_DIR, name, "%02d.fuzz_target" % (sample_num))
                 dest_file = os.path.join(consolidated_dir, "fuzz_harness-%02d_%02d.%s" % (sample_num, num_found, file_ext))
                 shutil.copyfile(source_file, dest_file)
                 num_found += 1
