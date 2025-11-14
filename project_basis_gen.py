@@ -15,18 +15,16 @@
 """
 project_basis_gen.py
 --------------------
-Creates the Dockerfile, project.yaml, and build.sh for a given github repository and maintainer email
+Creates the Dockerfile, project.yaml, build.sh, (and empty skeleton harnesses) for a given github repository and maintainer email
 
 Usage:
-    python3 project_basis_gen.py <repo_url> <maintainer_email> [--work WORK_ROOT] [--model MODEL]
+    import project_basis_gen 
 
-Example:
-    python3 project_basis_gen.py https://github.com/stephenberry/glaze valid@email.com
-    python3 project_basis_gen.py https://github.com/stephenberry/glaze valid@email.com --work work --model gpt-4o-mini
+    output_path = project_basis_gen.generate_project_basis(<repo_url>, <maintainer_email>, [--model <model>]
+
 Notes:
     - Assumes you have followed the setup guide: USAGE.md
-    - work_root defaults to current directory
-    - model defaults to 'gpt-4o'
+    - model defaults to 'gpt-4o-mini'
 """
 
 import os
@@ -34,75 +32,130 @@ import sys
 import yaml
 import shutil
 import subprocess
-import textwrap
-import argparse
-from datetime import datetime
 from logger_config import setup_logger
+
+# -------------------------------------------------------------------
+# Constants 
+# -------------------------------------------------------------------
+BASE_DIR = os.path.dirname(__file__)
+OSS_FUZZ_DIR = os.path.join(BASE_DIR, "oss-fuzz")
+OSS_FUZZ_GEN_DIR = os.path.join(BASE_DIR, "oss-fuzz-gen")
+GEN_PROJECTS_DIR = os.path.join(BASE_DIR, "gen-projects")
+DEFAULT_MODEL = "gpt-4o-mini"
 
 # -------------------------------------------------------------------
 # Logging functionality
 # -------------------------------------------------------------------
 logger = setup_logger(__name__)
-
 def log(msg: str) -> None:
     logger.info(f"\033[94m{msg}\033[00m")
 
 # -------------------------------------------------------------------
-# Core helper functions
+# Helper functions
 # -------------------------------------------------------------------
-def run_runner(repo_url: str, work_root: str, model: str) -> str:
-    """Calls OSS-Fuzz-Gen’s experimental runner to generate config files, returns the path of the generated files."""
-    # Get repo name to fuzz and local paths to oss-fuzz(gen), to pass to runner command
-    repo_name = os.path.basename(repo_url).replace(".git", "")
-    oss_fuzz_path = os.path.join(work_root, "oss-fuzz")
-    oss_fuzz_gen_path = os.path.join(work_root, "oss-fuzz-gen")
+def sanitize_repo_name(repo_url: str) -> str:
+    """Extracts an OSS-Fuzz project name (lowercase repo name)."""
+    name = os.path.basename(repo_url).replace(".git", "").strip().lower()
+    if not name:
+        raise ValueError(f"Could not parse repository name from URL: {repo_url}")
+    return name
+
+def clean_dir(path: str):
+    """Delete a directory/symlink if it exists."""
+    if os.path.islink(path):
+        os.unlink(path)
+    elif os.path.isdir(path):
+        shutil.rmtree(path)
+    elif os.path.exists(path):
+        os.unlink(path)
+
+def symlink_force(src: str, dst: str):
+    """
+    Create a symlink, replacing an existing files safely.
+    """
+    clean_dir(dst)
+    os.symlink(os.path.abspath(src), dst)
+
+# -------------------------------------------------------------------
+# Runner execution 
+# -------------------------------------------------------------------
+def run_runner(repo_url: str, repo_name: str, model: str) -> str:
+    """
+    Calls OSS-Fuzz-Gen’s experimental/build_generator/runner.py 
+    Return Value (path to generated files):
+        OSS_FUZZ_GEN_DIR/generated-builds-tmp/oss-fuzz-projects/<project>
+    """
     
-    # Runner command expects repo name as a text file
-    input_path = os.path.join(oss_fuzz_gen_path, "input.txt")
+    # Runner command expects repo name as a text file "input.txt"
+    input_path = os.path.join(OSS_FUZZ_GEN_DIR, "input.txt")
     with open(input_path, "w") as f:
         f.write(repo_url + "\n")
 
-    # generated-builds-tmp will be the output of the program - expected $MODEL to be set as an environment variable
+    tmp_output_dir = os.path.join(OSS_FUZZ_GEN_DIR, "generated-builds-tmp")
+    clean_dir(tmp_output_dir)
+
     cmd = [
         "python3", "-m", "experimental.build_generator.runner",
-        "-i", "input.txt",
+        "-i", input_path,
         "-o", "generated-builds-tmp",
         "-m", model,
-        "--oss-fuzz", oss_fuzz_path,
+        "--oss-fuzz", OSS_FUZZ_DIR,
     ]
 
     # Run the oss-fuzz-gen command to create the 3 files
     log(f"Running OSS-Fuzz-Gen for {repo_name} using model: {model}")
     try:
-        subprocess.run(cmd, cwd=oss_fuzz_gen_path, check=True)
+        subprocess.run(cmd, cwd=OSS_FUZZ_GEN_DIR, check=True)
     except subprocess.CalledProcessError as e:
         raise RuntimeError(f"Runner failed with exit code {e.returncode}")
 
     # Locate the generated files
-    gen_dir = os.path.join(oss_fuzz_gen_path, "generated-builds-tmp", "oss-fuzz-projects")
-    if not os.path.isdir(gen_dir) or not os.listdir(gen_dir):
+    projects_dir = os.path.join(tmp_output_dir, "oss-fuzz-projects")
+    if not os.path.isdir(projects_dir) or not os.listdir(projects_dir):
         raise RuntimeError("No generated build directories found — check OSS-Fuzz-Gen output")
     
-    # Get the latest files for this project
-    latest = max((os.path.join(gen_dir, d) for d in os.listdir(gen_dir)), key=os.path.getmtime)
-    log(f"Latest generated project: {latest}")
-    return latest
+    # TODO: Test this to confirm functionality
+    #
+    # Assumes OSS-Fuzz-Gen builds follow the format:
+    #   <project>-empty-build-0
+    dirs = os.listdir(projects_dir)
+    if not dirs:
+        raise RuntimeError("OSS-Fuzz-Gen produced no builds")
+    candidates = [
+        d for d in dirs if d.lower().startswith(repo_name)
+    ]
 
+    if not candidates:
+        raise RuntimeError(
+            f"No generated directory matched repo '{repo_name}'. Found: {dirs}"
+        )
 
-def copy_outputs(latest_dir: str, base_out: str) -> None:
-    """Copy Dockerfile, build.sh, and project.yaml into the output directory."""
-    os.makedirs(base_out, exist_ok=True)
+    # Take empty-build-0
+    candidates.sort()
+    chosen = candidates[0]
+
+    output_path = os.path.join(projects_dir, chosen)
+    log(f"Generated project basis directory: {output_path}")
+
+    return output_path 
+# -------------------------------------------------------------------
+# Copy and patch functions
+# -------------------------------------------------------------------
+def copy_outputs(src_dir: str, dst_dir: str) -> None:
+    """Copy Dockerfile, build.sh, and project.yaml into the dst directory."""
+    clean_dir(dst_dir)
+    os.makedirs(dst_dir, exist_ok=True)
+
     copied = []
     for fname in ("Dockerfile", "build.sh", "project.yaml"):
-        src = os.path.join(latest_dir, fname)
-        dst = os.path.join(base_out, fname)
+        src = os.path.join(src_dir, fname)
+        dst = os.path.join(dst_dir, fname)
         if os.path.exists(src):
             shutil.copy2(src, dst)
             copied.append(fname)
     if not copied:
         raise RuntimeError("No output found in generated directory")
-    log(f"Copied: {', '.join(copied)} to {base_out}")
-
+    log(f"Copied: {', '.join(copied)} to {dst_dir}")
 
 def patch_project_yaml(yaml_path: str, email: str) -> None:
     """Update the maintainer email in project.yaml."""
@@ -116,76 +169,39 @@ def patch_project_yaml(yaml_path: str, email: str) -> None:
         yaml.dump(y, f, sort_keys=False)
     log(f"Updated maintainer email to: {email}")
 
-
 # -------------------------------------------------------------------
 # Main workflow
 # -------------------------------------------------------------------
-def generate_project_basis(repo_url: str, email: str, work_root: str, model: str) -> None:
-    """Calls functions to generate the 3 files, copy outputs out of oss-fuzz-gen, and patch the project.yaml"""
-    repo_name = os.path.basename(repo_url).replace(".git", "")
-    timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-    base_out = os.path.join(os.getcwd(), "outputs", f"{repo_name}-{timestamp}")
+def generate_project_basis(repo_url: str, email: str, model: str = DEFAULT_MODEL) -> str:
+    """
+    Calls function to generate the 3 basis files
+    Copies the output out of oss-fuzz-gen and into out_dir.
+    Patches the project.yaml with email as primary_contact
+    """
+
+    repo_name = sanitize_repo_name(repo_url)
+
+    # Path to be returned of generated files
+    out_dir = os.path.join(GEN_PROJECTS_DIR, repo_name)
+
+    # Symlink 
+    oss_fuzz_project_symlink = os.path.join(OSS_FUZZ_DIR, "projects", repo_name)
 
     log(f"[+] Starting OSS-Fuzz basis generation for {repo_name}")
-    latest_generated = run_runner(repo_url, work_root, model)
-    copy_outputs(latest_generated, base_out)
-    patch_project_yaml(os.path.join(base_out, "project.yaml"), email)
+    
+    # Call oss-fuzz-gen's 'runner' for build generation: Get the path of the generated files
+    generated_dir = run_runner(repo_url, repo_name, model)
+
+    # Copy output and patch yaml
+    copy_outputs(generated_dir, out_dir)
+    patch_project_yaml(os.path.join(out_dir, "project.yaml"), email)
+    
+    # Make the symlink to files in oss-fuzz
+    os.makedirs(os.path.join(OSS_FUZZ_DIR, "projects"), exist_ok=True)
+    symlink_force(out_dir, oss_fuzz_project_symlink)
 
     log(f"Generation complete for {repo_name}")
-    log(f"Output saved under: {base_out}")
-
-
-# -------------------------------------------------------------------
-# CLI entrypoint
-# -------------------------------------------------------------------
-def usage():
-    """Usage guide passed into --help for argparse"""
-    return textwrap.dedent("""
-        Usage:
-            python3 project_basis_gen.py <repo_url> <maintainer_email> [--work WORK_ROOT] [--model MODEL]
-
-        Example:
-            python3 project_basis_gen.py https://github.com/stephenberry/glaze valid@email.com
-            python3 project_basis_gen.py https://github.com/stephenberry/glaze valid@email.com --work work --model gpt-4o
-
-        Notes:
-            - Assumes you have followed the setup guide: USAGE.md
-            - work_root defaults to current directory
-            - model defaults to 'gpt-4o'
-    """).strip()
-
-def main():
-    """Parse arguments as described above, and call generate_project_basis with user input."""
-    parser = argparse.ArgumentParser(
-        description=usage(),
-        formatter_class=argparse.RawTextHelpFormatter,
-    )
-    parser.add_argument("repo_url", help="GitHub repository URL")
-    parser.add_argument("maintainer_email", help="Maintainer email for project.yaml")
-    parser.add_argument(
-        "--work",
-        dest="work_root",
-        default=os.getcwd(),
-        help="Optional working directory (default: current directory)",
-    )
-    parser.add_argument(
-        "--model",
-        dest="model",
-        default="gpt-4o",
-        help="OpenAI model name (default: gpt-4o)",
-    )
-
-    if len(sys.argv) == 1:
-        parser.print_help(sys.stderr)
-        sys.exit(0)
-
-    args = parser.parse_args()
-
-    try:
-        generate_project_basis(args.repo_url, args.maintainer_email, args.work_root, args.model)
-    except Exception as e:
-        log(f"Error: {e}")
-        sys.exit(1)
+    log(f"Output saved under: {out_dir}")
+    log(f"Symlinked into OSS-Fuzz: {oss_fuzz_project_symlink}")
     
-if __name__ == "__main__":
-    main()
+    return out_dir
