@@ -32,7 +32,13 @@ def log(output):
     logger.info(f"\033[95moss_fuzz_hook:\033[00m {output}")
 
 """
-Unified method to run OSS-Fuzz projects with either existing or generated harnesses
+Runs OSS-Fuzz projects with either existing or generated harnesses
+
+Args:
+    project (str): Name of the project to run with oss-fuzz. Required.
+    harness_type (str): Choose whether to run existing harness in oss-fuzz or generated harnesses.
+
+Returns (bool): Success/Failure status 
 """
 def run_project(project: str = None, harness_type: str = "existing"):
     """
@@ -93,12 +99,13 @@ def run_project(project: str = None, harness_type: str = "existing"):
 
         log(f"Running main fuzzer: {fuzz_name}")
         subprocess.run(["python3", path_to_helper, "run_fuzzer", project, fuzz_name, "--", "-max_total_time=10", "-runs=1000"])
+        return True
         
     elif harness_type == "generated":
         generated_fuzzers = []
         for i in os.listdir(path_to_fuzzers):
-            # Match pattern: fuzz-harness-{sample_num}_{fuzz_target_num} (no file extension for built binaries)
-            if re.match(r'^fuzz-harness-\d+_\d+\.[a-zA-Z]+$', i):
+            # Match pattern: fuzz-harness-{sample_num}_{fuzz_target_num}
+            if re.match(r'^fuzz-harness-\d+_\d+\$', i) and '.' not in i:
                 generated_fuzzers.append(i)
         
         if not generated_fuzzers:
@@ -121,6 +128,4 @@ def run_project(project: str = None, harness_type: str = "existing"):
                 log(f"{fuzzer} failed")
         
         log(f"Completed running {success_count}/{len(generated_fuzzers)} generated fuzzers")
-        return success_count > 0
-    
-    return True
+        return True
