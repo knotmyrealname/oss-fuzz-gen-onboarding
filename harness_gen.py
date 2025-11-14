@@ -28,12 +28,12 @@ import ofgo as main
 BASE_DIR = os.path.dirname(__file__)
 BENCHMARK_HEURISTICS = "far-reach-low-coverage,low-cov-with-fuzz-keyword,easy-params-far-reach"
 NUMBER_OF_HARNESSES = 2
-NUM_SAMPLES = 2
+NUM_SAMPLES = 1 # Currently only supports 1
 WORK_DIR = os.path.join(BASE_DIR, "results")
 REPORT_DIR = os.path.join(BASE_DIR, "report")
-CONSOLIDATE_DIR = os.path.join(BASE_DIR, "gen-projects")
+PERSISTENCE_DIR = os.path.join(BASE_DIR, "gen-projects")
 OSS_FUZZ_PROJECTS_DIR = os.path.join(main.OSS_FUZZ_DIR, "projects")
-GENERATED_HARNESS_DIR = os.path.join(CONSOLIDATE_DIR, "samples")
+GENERATED_HARNESS_DIR = os.path.join(PERSISTENCE_DIR, "samples")
 
 logger = logging.getLogger(__name__)
 
@@ -84,7 +84,7 @@ def clean_old_harnesses(project):
         None
     '''
     log("Cleaning old harnesses")
-    consolidated_dir = os.path.join(CONSOLIDATE_DIR, project)
+    consolidated_dir = os.path.join(PERSISTENCE_DIR, project)
     old_fuzz_target_regex = fr"fuzz_harness-\d\d_\d\d.(.)*"
     for root, dirs, files in os.walk(consolidated_dir):
         for name in files:
@@ -104,29 +104,28 @@ def generate_harness(model: str, project: str, temperature: float = 0.4):
         None
     ''' 
     
-    ## Sets up folders for persistence
-    persistent_project_dir = os.path.join(CONSOLIDATE_DIR, project)
+    ## Sets up synced folders for persistence
+    persistent_project_dir = os.path.join(PERSISTENCE_DIR, project)
     project_dir = os.path.join(OSS_FUZZ_PROJECTS_DIR, project)
+
     if not os.path.exists(GENERATED_HARNESS_DIR):
         os.makedirs(GENERATED_HARNESS_DIR)
-    if not os.path.exists(persistent_project_dir) and os.path.exists(project_dir):
-        shutil.move(project_dir, persistent_project_dir)
-        os.symlink(persistent_project_dir, project_dir, target_is_directory=True)
-    elif os.path.exists(persistent_project_dir):
-        if os.path.exists(project_dir):
-            shutil.rmtree(project_dir)
-        os.symlink(persistent_project_dir, project_dir, target_is_directory=True)
+    if os.path.exists(persistent_project_dir):
+        main.sync_dirs(persistent_project_dir, project_dir)
+    elif os.path.exists(project_dir):
+        main.sync_dirs(project_dir, persistent_project_dir)
     else:
         log(f"Cannot find Project folder for {project} at {project_dir} or any generated projects.")
         sys.exit(1)
         
     ## Cleans up existing project folders
     project_dir_regex = fr"{project}-.*-\d*"
-    for root, dirs, files in os.walk(GENERATED_HARNESS_DIR):
+    for root, dirs, files in os.walk(project_dir):
         for name in dirs:
             if re.match(project_dir_regex, name):
-                shutil.rmtree(os.path.join(GENERATED_HARNESS_DIR, name))
+                shutil.rmtree(os.path.join(project_dir, name))
     clean_old_harnesses(project)
+    main.sync_dirs(project_dir, persistent_project_dir)
 
     log(f'''Beginning OSS-Fuzz-gen harness generation. This may take a long time''')
     start = time.time()
@@ -155,13 +154,13 @@ def generate_harness(model: str, project: str, temperature: float = 0.4):
     python -m http.server -b 127.0.0.1 5000 -d {REPORT_DIR}''')
     log("You may have to change the IP addresss (127.0.0.1) or port (5000) to suit your needs.")
 
-    ## Move generated data to a folder outside oss-fuzz for persistence
+    ## Sync generated data to a folder outside oss-fuzz for persistence
     for root, dirs, files in os.walk(OSS_FUZZ_PROJECTS_DIR):
         for name in dirs:
             if re.match(project_dir_regex, name):
                 harness_dir = os.path.join(OSS_FUZZ_PROJECTS_DIR, name)
                 target_dir = os.path.join(GENERATED_HARNESS_DIR, name)
-                shutil.move(harness_dir, target_dir)
+                main.sync_dirs(harness_dir, target_dir)
 
 def consolidate_harnesses(project: str, sample_num: int = 1):
     '''
@@ -180,14 +179,11 @@ def consolidate_harnesses(project: str, sample_num: int = 1):
     if not os.path.exists(project_dir):
         log(f"Cannot locate project for consolidation at {project_dir}")
         return
+    
+    if not os.path.exists(PERSISTENCE_DIR):
+        os.makedirs(PERSISTENCE_DIR)
 
-    ## Creates directory to consilidate generated harnesses outside of oss-fuzz for easy access and persistence
-    consolidated_dir = os.path.join(CONSOLIDATE_DIR, project)
-    if not os.path.exists(consolidated_dir):
-        if not os.path.exists(CONSOLIDATE_DIR):
-            log("No projects found: cannot consolidate")
-        shutil.move(project_dir, consolidated_dir)
-        os.symlink(consolidated_dir, project_dir, target_is_directory=True)
+    persistent_project_dir = os.path.join(PERSISTENCE_DIR, project)
     
     ## Clean up prevous fuzz targets
     clean_old_harnesses(project)
@@ -201,6 +197,8 @@ def consolidate_harnesses(project: str, sample_num: int = 1):
         for name in dirs:
             if re.match(project_dir_regex, name):
                 source_file = os.path.join(GENERATED_HARNESS_DIR, name, "%02d.fuzz_target" % (sample_num))
-                dest_file = os.path.join(consolidated_dir, "fuzz_harness-%02d_%02d.%s" % (sample_num, num_found, file_ext))
+                dest_file = os.path.join(project_dir, "fuzz_harness-%02d_%02d.%s" % (sample_num, num_found, file_ext))
                 shutil.copyfile(source_file, dest_file)
                 num_found += 1
+
+    main.sync_dirs(project_dir, persistent_project_dir)
