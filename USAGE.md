@@ -54,3 +54,4 @@ python3 project_basis_gen.py <REPOSITORY_URL> <MAINTAINER_EMAIL>
 ```python
 python3 project_basis_gen.py <REPOSITORY_URL> <MAINTAINER_EMAIL> --work <PATH_TO_WORK_DIR> --model <MODEL_NAME> 
 ```
+```
