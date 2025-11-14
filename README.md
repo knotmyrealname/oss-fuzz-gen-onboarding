@@ -6,11 +6,14 @@ This collection of scripts serves as an entry into fuzzing with OSS-Fuzz, simpli
 ## What is Fuzzing? 
 At a high level, fuzzing is an automated software testing technique that runs programs with a large amount of mutated and randomly generated data to attempt to induce a fail condition/crash (which may lead to a bug/security vulnerability). 
 
+## What is a Fuzz Harness
+Fuzz harnesses are essentially programs that connects a fuzzing engine to a target program, setting up the work environment and translating the engine input into data that can be interpreted by the target program. Within Fuzz harnesses are fuzz targets, individual files that contain instructions for fuzzing specific parts of the target program.
+
 ## What is OSS-Fuzz?
-OSS-Fuzz is a project created by Google for continuously fuzzing open source software. They accept projects through Github pull requests ([docs](https://google.github.io/oss-fuzz/getting-started/accepting-new-projects/)), where they initially expect only a project.yaml (created in oss-fuzz/projects/{your-project}). Before a project is submitted to OSS-Fuzz, it must be shown that it either has a significant user base or is critical to the global IT infrastructure (you can do this in your pull request - check pull request history to see examples). When a project is submitted, Google will run OSS-Fuzz on it every few days, with build logs provided on [this website](https://oss-fuzz-build-logs.storage.googleapis.com/index.html).
+OSS-Fuzz is a project created by Google for continuously fuzzing open source software. They accept projects through Github pull requests ([docs](https://google.github.io/oss-fuzz/getting-started/accepting-new-projects/)), where they initially expect only a project.yaml (created in oss-fuzz/projects/{your-project}). Before a project is submitted to OSS-Fuzz, it must be shown that it either has a significant user base or is critical to the global IT infrastructure (you can do this in your pull request - check pull request history to see examples). When a project is submitted, Google will run OSS-Fuzz on it every few days, with build logs provided on [this website](https://oss-fuzz-build-logs.storage.googleapis.com/index.html). Additionally, the most up-to-date coverage reports and various other statistics can be found on the [Introspector Website](https://introspector.oss-fuzz.com/).
 
 ## What is OSS-Fuzz-gen?
-TODO
+OSS-Fuzz-gen is a framework created by Google for helping automate the Fuzz harness generation process, by generating fuzz targets, with the help of LLMs. It does this by prompting the LLM to generate a fuzzing harness, providing it with build logs if the harness generator fails to build, until the LLM is able to generate a working fuzzing harness.
 
 ## Setup
 ### Docker
@@ -21,8 +24,8 @@ These installation instructions assume that python is installed and on path (wit
 
 1. **Clone the Necessary Repositories** into the desired directory
 ```
-## PUT UPDATED LINK
-cd XXX
+git clone https://github.com/knotmyrealname/ofgo
+cd ofgo
 git submodule update --init --recursive
 ```
 2. **Set up Python Environment** - This step is not strictly necessary, but highly recommended to maintain a clean working environment. From our testing, python 3.11 is required to run OSS-Fuzz and OSS-Fuzz-gen. 
@@ -46,13 +49,22 @@ pip install -r requirements.txt
 pip install -r oss-fuzz-gen/requirements.txt
 ```
 
+### LLM Key Setup
+OFGO only officially supports OpenAI's ChatGPT API for LLM-based generation, to simplify the workspace. We do not offically support Google's vertex models (listed [here](https://github.com/google/oss-fuzz-gen/blob/main/USAGE.md)), as they require a gcloud account, but there's no reason they wouldn't work if set up properly.
+
+To set up your LLM key, simply export your OpenAI API key as an environmental variable:
+
+```
+export OPENAI_API_KEY=<your-API-key>
+```
+
 ## Usage
 Check out our detailed [usage guide](./USAGE.md) for documentation on available commands
 
 ## Understanding Output
 TODO
 
-### Enabling GPT-5 Support
+## Enabling GPT-5 Support
 By default, OSS-Fuzz-gen does not support OpenAI's GPT-5 models. If you would like to work with GPT-5, we have provided a fork with a patch to enable GPT-5. Note that GPT-5 will only work with a temperature of 1 (set by `--temperature 1`). To enable this patch, run the following commands:
 
 ```
@@ -65,6 +77,9 @@ Currently, the following GPT-5 models are supported:
  - gpt-5
  - gpt-5-mini
  - gpt-5-nano
+
+### Open Source LLMs
+If there is enough interest, we may look to update our fork to enable the use of Open Source LLMs through HuggingFace. We suspect these models will produce inferior results, compared to large closed-source models, but that will be a topic of future research. 
 
 ## Contact
 For questions, comments, or support, please create a Github issue. A contributor will respond whenever they are available
