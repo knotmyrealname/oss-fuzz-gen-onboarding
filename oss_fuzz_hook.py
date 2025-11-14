@@ -84,21 +84,22 @@ def run_project(project: str = None, harness_type: str = "existing"):
     
     if harness_type == "existing":
         # Look for standard OSS-Fuzz harness pattern: fuzz_*
-        fuzz_name = ""
+        fuzzers = []
         for i in os.listdir(path_to_fuzzers):
             if i.startswith("fuzz_") and '.' not in i:
-                fuzz_name = i
-                break
+                fuzzers.append(i)
         
-        if fuzz_name is None:
+        if len(fuzzers) == 0:
             log("Error: No existing fuzzers found with pattern 'fuzz_*'.")
             return False
         
-        log(f"Found fuzzer: {fuzz_name}")
-        
-
-        log(f"Running main fuzzer: {fuzz_name}")
-        subprocess.run(["python3", path_to_helper, "run_fuzzer", project, fuzz_name, "--", "-max_total_time=10", "-runs=1000"])
+        log(f"Found {len(fuzzers)} fuzzers for {project}")
+        for fuzz in fuzzers:
+            result = subprocess.run(["python3", path_to_helper, "run_fuzzer", project, fuzz, "--", "-max_total_time=600", "-runs=1000"])
+            if result.returncode == 0:
+                log(f"{fuzz} completed successfully")
+            else:
+                log(f"{fuzz} failed")
         return True
         
     elif harness_type == "generated":
@@ -119,7 +120,7 @@ def run_project(project: str = None, harness_type: str = "existing"):
         for fuzzer in generated_fuzzers:
             log(f"Running generated fuzzer: {fuzzer}")
             result = subprocess.run([
-                "python3", path_to_helper, "run_fuzzer", project, fuzzer, "--", "-max_total_time=10", "-runs=1000"
+                "python3", path_to_helper, "run_fuzzer", project, fuzzer, "--", "-max_total_time=600", "-runs=1000"
             ])
             if result.returncode == 0:
                 success_count += 1
