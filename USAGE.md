@@ -58,3 +58,12 @@ python3 oss_fuzz_gen_onboarding.py corpus-gen \
   [--model gpt-5] \
   [--temperature 1]
 ```
+
+# Only generating configuration files (Dockerfile, build.sh, project.yaml) for a new project (no harnesses)
+```
+python3 project_basis_gen.py <REPOSITORY_URL> <MAINTAINER_EMAIL>
+```
+- To specify a preferred model (defaults to gpt-4) or work directory (defaults to current directory)
+```python
+python3 project_basis_gen.py <REPOSITORY_URL> <MAINTAINER_EMAIL> --work <PATH_TO_WORK_DIR> --model <MODEL_NAME> 
+```
