@@ -2,9 +2,9 @@ import harness_gen as harness
 import ofgo as main
 import os
 
-harness.generate_harness("gpt-5-mini", "argcomplete", 1)
+#harness.generate_harness("gpt-5-mini", "argcomplete", 1)
 
-#harness.consolidate_harnesses("argcomplete", 1)
+harness.consolidate_harnesses("argcomplete", 1)
 
 BASE_DIR = os.path.dirname(__file__)
 CONSOLIDATE_DIR = os.path.join(BASE_DIR, "gen-projects")

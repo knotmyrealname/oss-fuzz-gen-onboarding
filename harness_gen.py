@@ -84,14 +84,14 @@ def clean_old_harnesses(project):
         None
     '''
     log("Cleaning old harnesses")
-    consolidated_dir = os.path.join(PERSISTENCE_DIR, project)
+    consolidated_dir = os.path.join(OSS_FUZZ_PROJECTS_DIR, project)
     old_fuzz_target_regex = fr"fuzz_harness-\d\d_\d\d.(.)*"
     for root, dirs, files in os.walk(consolidated_dir):
         for name in files:
             if re.match(old_fuzz_target_regex, name):
                 os.remove(os.path.join(consolidated_dir, name))
 
-def generate_harness(model: str, project: str, temperature: float = 0.4):
+def generate_harness(model: str, project: str, temperature: float = main.DEFAULT_TEMPERATURE):
     '''
     Generates OSS-Fuzz-gen harnesses for a given project using a specified model and temperature.
 
@@ -118,12 +118,12 @@ def generate_harness(model: str, project: str, temperature: float = 0.4):
         log(f"Cannot find Project folder for {project} at {project_dir} or any generated projects.")
         sys.exit(1)
         
-    ## Cleans up existing project folders
+    ## Cleans up samples - OSS-Fuzz-gen already cleans up OSS-Fuzz/projects
     project_dir_regex = fr"{project}-.*-\d*"
-    for root, dirs, files in os.walk(project_dir):
+    for root, dirs, files in os.walk(GENERATED_HARNESS_DIR):
         for name in dirs:
             if re.match(project_dir_regex, name):
-                shutil.rmtree(os.path.join(project_dir, name))
+                shutil.rmtree(os.path.join(GENERATED_HARNESS_DIR, name))
     clean_old_harnesses(project)
     main.sync_dirs(project_dir, persistent_project_dir)
 

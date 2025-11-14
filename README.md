@@ -6,8 +6,11 @@ This collection of scripts serves as an entry into fuzzing with OSS-Fuzz, simpli
 ## What is Fuzzing? 
 At a high level, fuzzing is an automated software testing technique that runs programs with a large amount of mutated and randomly generated data to attempt to induce a fail condition/crash (which may lead to a bug/security vulnerability). 
 
-## What is a Fuzz Harness
+## What is a Fuzz Harness?
 Fuzz harnesses are essentially programs that connects a fuzzing engine to a target program, setting up the work environment and translating the engine input into data that can be interpreted by the target program. Within Fuzz harnesses are fuzz targets, individual files that contain instructions for fuzzing specific parts of the target program.
+
+## What is a Seed Corpus?
+A seed corpus is the starting data for the fuzzer - generally valid input. This starting data will then be mutated by the fuzzing engine in many different ways in an attempt to cause a failure condition. Although it is generally fine to run fuzzing engines with blank corpuses, a manually curated corpus will generally enable the fuzzing engine to achieve higher coverage results. The size of a seed corpus should be minimized, ideally, as it is expanded by the fuzzing engine to many orders of magnitude greater than its original size, and can take up unnecessary space and computational power. 
 
 ## What is OSS-Fuzz?
 OSS-Fuzz is a project created by Google for continuously fuzzing open source software. They accept projects through Github pull requests ([docs](https://google.github.io/oss-fuzz/getting-started/accepting-new-projects/)), where they initially expect only a project.yaml (created in oss-fuzz/projects/{your-project}). Before a project is submitted to OSS-Fuzz, it must be shown that it either has a significant user base or is critical to the global IT infrastructure (you can do this in your pull request - check pull request history to see examples). When a project is submitted, Google will run OSS-Fuzz on it every few days, with build logs provided on [this website](https://oss-fuzz-build-logs.storage.googleapis.com/index.html). Additionally, the most up-to-date coverage reports and various other statistics can be found on the [Introspector Website](https://introspector.oss-fuzz.com/).
