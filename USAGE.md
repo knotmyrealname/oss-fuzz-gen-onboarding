@@ -9,26 +9,12 @@ https://github.com/google/oss-fuzz.git
 git submodule update --init --recursive
 ```
 
-# To setup the environment to run this project do the following.
-# Create virtual environment
-```python3.11 -m venv venv```
+# Follow the steps in the [README](./README.md) to setup the python environment to run this tool
 
-# Activate virtual environment
-# On Linux/macOS:
-```source venv/bin/activate```
-# On Windows:
-```venv\Scripts\activate```
-
-# Upgrade pip
-```pip install --upgrade pip```
-
-# Install dependencies
-```pip install -r oss-fuzz-gen/requirements.txt```
-
-# Set environment variables for open-ai api key
+# Setting the environment variable for open-ai api key
 ```export OPENAI_API_KEY="your-api-key-here"``` 
 
-# For new projects that need complete setup
+# For harness generation of projects that need complete setup (build.sh, project.yaml, and Dockerfile)
 ```
 python3 oss_fuzz_gen_onboarding.py default \
   --repo <REPO_URL> \
@@ -37,7 +23,7 @@ python3 oss_fuzz_gen_onboarding.py default \
   [--temperature 1] 
   ``` 
 
-# Creating new harnesses for existing projects
+# To create new harnesses for existing projects
 ```
 python3 oss_fuzz_gen_onboarding.py pre-existing \
   --project <PROJECT_NAME> \
@@ -49,6 +35,7 @@ python3 oss_fuzz_gen_onboarding.py pre-existing \
 ```
 python3 oss_fuzz_gen_onboarding.py pre-existing \
   --project <PROJECT_NAME>
+```
 ```
 
 # Creating new seed corpuses using LLMs
@@ -66,4 +53,5 @@ python3 project_basis_gen.py <REPOSITORY_URL> <MAINTAINER_EMAIL>
 - To specify a preferred model (defaults to gpt-4) or work directory (defaults to current directory)
 ```python
 python3 project_basis_gen.py <REPOSITORY_URL> <MAINTAINER_EMAIL> --work <PATH_TO_WORK_DIR> --model <MODEL_NAME> 
+```
 ```
