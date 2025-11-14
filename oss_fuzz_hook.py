@@ -36,7 +36,7 @@ Runs OSS-Fuzz projects with either existing or generated harnesses
 
 Args:
     project (str): Name of the project to run with oss-fuzz. Required.
-    harness_type (str): Choose whether to run existing harness in oss-fuzz or generated harnesses.
+    harness_type (str): Choose whether to run existing harness in oss-fuzz or generated harnesses. Default to "existing".
 
 Returns (bool): Success/Failure status 
 """
