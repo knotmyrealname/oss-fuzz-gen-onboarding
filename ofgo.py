@@ -107,7 +107,7 @@ def run_full_suite(args):
 
 def run_basis_gen(args):
     log(f'Generating project structure with {args.repo}, {args.email}')
-    repo_dir = generate_project_basis(args.repo, args.email, BASE_DIR, args.model)
+    repo_dir = generate_project_basis(args.repo, args.email, args.model)
 
 def run_harnessgen(args):
     validate_model(args.model, args.temperature)
@@ -164,13 +164,20 @@ def run_on_args():
 
     subparsers = parser.add_subparsers(dest='command', help='Available commands')
 
-    # Run the default
+    # Run the full pipeline
     ni = subparsers.add_parser('default', help='Full onboarding with harness and corpii generation')
     ni.add_argument('--repo', type=str, help='Project repo URL')
     ni.add_argument('--email', type=str, help='Project maintainer email')
     ni.add_argument('--model', type=str, default=DEFAULT_MODEL, help='OpenAI model name')
     ni.add_argument('--temperature', type=int, default=DEFAULT_TEMPERATURE, help='Temperature for OpenAI model')
     ni.set_defaults(func=run_noninteractive)
+
+    # Run the only basis gen
+    ba = subparsers.add_parser('basis', help='Only generate skeleton of the harness (project.yaml, build.sh, Dockerfile)')
+    ba.add_argument('--repo', type=str, help='Project repo URL')
+    ba.add_argument('--email', type=str, help='Project maintainer email')
+    ba.add_argument('--model', type=str, default=DEFAULT_MODEL, help='OpenAI model name')
+    ba.set_defaults(func=run_basis_gen)
 
     # Run only OSS-Fuzz-gen
     pe = subparsers.add_parser('pre-existing', help='Run OSS-Fuzz-Gen on pre-existing project')
