@@ -25,6 +25,7 @@ import openai
 
 import harness_gen
 import oss_fuzz_hook
+from project_template_gen import generate_from_templates
 from project_basis_gen import generate_project_basis
 from logger_config import setup_logger
 
@@ -75,6 +76,7 @@ def run_interactive():
     try:
         repo = input('Enter project repo URL: ').strip()
         email = input('Enter project maintainer email: ').strip()
+        language = input('Enter project language: ').strip()
         check_email(email)
         repo = sanitize_repo(repo)
         model = input(f'Enter OpenAI model name (default: {DEFAULT_MODEL}): ').strip()
@@ -85,7 +87,7 @@ def run_interactive():
             temperature = DEFAULT_TEMPERATURE
         else:
             temperature = int(temp)
-        args = argparse.Namespace(repo=repo, email=email, model=model, temperature=temperature)
+        args = argparse.Namespace(repo=repo, email=email, model=model, language=language, temperature=temperature)
         run_full_suite(args)
     except ValueError as ve:
         log(f'Error: {ve}')
@@ -108,6 +110,10 @@ def run_full_suite(args):
 def run_basis_gen(args):
     log(f'Generating project structure with {args.repo}, {args.email}')
     repo_dir = generate_project_basis(args.repo, args.email, args.model)
+
+def run_template_gen(args):
+    log(f'Generating project with a template')
+    generate_from_templates(args.repo, args.email, args.language, args.model)
 
 def run_harnessgen(args):
     validate_model(args.model, args.temperature)
@@ -174,6 +180,7 @@ def run_on_args():
     ba = subparsers.add_parser('basis', help='Only generate skeleton of the harness (project.yaml, build.sh, Dockerfile)')
     ba.add_argument('--repo', type=str, help='Project repo URL')
     ba.add_argument('--email', type=str, help='Project maintainer email')
+    ba.add_argument('--language', type=str, help='Programming language of project to fuzz')
     ba.add_argument('--model', type=str, default=DEFAULT_MODEL, help='OpenAI model name')
     ba.set_defaults(func=run_basis_gen)
 

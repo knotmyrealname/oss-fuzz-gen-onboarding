@@ -12,8 +12,8 @@ TARGET_REPO_DIR = os.path.join(BASE_DIR, "work", "ofgo", "repositories")
 PERSISTENCE_DIR = os.path.join(BASE_DIR, "gen-projects")
 
 logger = setup_logger(__name__)
-def log(msg: str) -> None:
-    logger.info(f"\033[94m{msg}\033[00m")
+def log(output): ## Green rep
+    logger.info(f"\033[94mproject_template_gen:\033[00m {output}")
 
 def sanitize_repo_name(repo_url: str) -> str:
     """Extracts an OSS-Fuzz project name (lowercase repo name)."""
