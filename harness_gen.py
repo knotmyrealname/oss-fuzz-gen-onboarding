@@ -33,7 +33,7 @@ WORK_DIR = os.path.join(BASE_DIR, "results")
 REPORT_DIR = os.path.join(BASE_DIR, "report")
 PERSISTENCE_DIR = os.path.join(BASE_DIR, "gen-projects")
 OSS_FUZZ_PROJECTS_DIR = os.path.join(main.OSS_FUZZ_DIR, "projects")
-GENERATED_HARNESS_DIR = os.path.join(PERSISTENCE_DIR, "samples")
+GENERATED_HARNESS_DIR = os.path.join(PERSISTENCE_DIR, "SAMPLES")
 
 logger = logging.getLogger(__name__)
 
@@ -110,13 +110,17 @@ def generate_harness(model: str, project: str, temperature: float = main.DEFAULT
 
     if not os.path.exists(GENERATED_HARNESS_DIR):
         os.makedirs(GENERATED_HARNESS_DIR)
-    if os.path.exists(persistent_project_dir):
+    if os.path.exists(persistent_project_dir): ## Prioritize our generated projects over existing projects
+        log("Found OFGO-Generated project. Proceeding with Generation.")
         main.sync_dirs(persistent_project_dir, project_dir)
     elif os.path.exists(project_dir):
+        log("Found pre-existing OSS-Fuzz project. Proceeding with Generation.")
         main.sync_dirs(project_dir, persistent_project_dir)
     else:
         log(f"Cannot find Project folder for {project} at {project_dir} or any generated projects.")
         sys.exit(1)
+    
+    log(str(os.path.exists(project_dir)))
         
     ## Cleans up samples - OSS-Fuzz-gen already cleans up OSS-Fuzz/projects
     project_dir_regex = fr"{project}-.*-\d*"
@@ -126,6 +130,8 @@ def generate_harness(model: str, project: str, temperature: float = main.DEFAULT
                 shutil.rmtree(os.path.join(GENERATED_HARNESS_DIR, name))
     clean_old_harnesses(project)
     main.sync_dirs(project_dir, persistent_project_dir)
+
+    log(str(os.path.exists(project_dir)))
 
     log(f'''Beginning OSS-Fuzz-gen harness generation. This may take a long time''')
     start = time.time()
@@ -143,24 +149,34 @@ def generate_harness(model: str, project: str, temperature: float = main.DEFAULT
 
     end = time.time()
     log("Completed in %.4f seconds" % (end - start))
-    log(f"Your generated harnesses can be found in {project}-{project}..." +
-                "as XX.fuzz_target. To use them, you can move them to your main folder and rename them.")
 
-    ## Get report from OSS-Fuzz-gen run
-    os.chdir(main.OSS_FUZZ_GEN_DIR)
-    subprocess.run(["python","-m", "report.web", "-r", WORK_DIR, "-o", REPORT_DIR])
-    log(f"Report Generated in {REPORT_DIR}")
-    log(f'''To view the report, either open up the index.html located within in your web browser or run the command:
-    python -m http.server -b 127.0.0.1 5000 -d {REPORT_DIR}''')
-    log("You may have to change the IP addresss (127.0.0.1) or port (5000) to suit your needs.")
+    log(str(os.path.exists(project_dir)))
 
     ## Sync generated data to a folder outside oss-fuzz for persistence
+    found_output = False
     for root, dirs, files in os.walk(OSS_FUZZ_PROJECTS_DIR):
         for name in dirs:
             if re.match(project_dir_regex, name):
+                found_output = True
                 harness_dir = os.path.join(OSS_FUZZ_PROJECTS_DIR, name)
                 target_dir = os.path.join(GENERATED_HARNESS_DIR, name)
                 main.sync_dirs(harness_dir, target_dir)
+                
+    if found_output:
+        log(f"Your generated harnesses can be found in {project}-{project}..." +
+                    "as XX.fuzz_target. To use them, you can move them to your main folder and rename them.")
+
+        ## Get report from OSS-Fuzz-gen run
+        os.chdir(main.OSS_FUZZ_GEN_DIR)
+        subprocess.run(["python","-m", "report.web", "-r", WORK_DIR, "-o", REPORT_DIR])
+        log(f"Report Generated in {REPORT_DIR}")
+        log(f'''To view the report, either open up the index.html located within in your web browser or run the command:
+        python -m http.server -b 127.0.0.1 5000 -d {REPORT_DIR}''')
+        log("You may have to change the IP address (127.0.0.1) or port (5000) to suit your needs.")
+    else: 
+        log("Generation Failed. You may have to check the run logs to diagnose the issue.")
+
+    
 
 def consolidate_harnesses(project: str, sample_num: int = 1):
     '''

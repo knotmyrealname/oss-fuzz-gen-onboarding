@@ -111,8 +111,6 @@ def run_basis_gen(args):
 
 def run_harnessgen(args):
     validate_model(args.model, args.temperature)
-    if not project_exists(args.project):
-        raise ValueError(f'Project {args.project} does not exist in OSS-Fuzz')
     log(f'Generating harness for {args.project}')
     harness_gen.generate_harness(args.model, args.project, args.temperature)
     harness_gen.consolidate_harnesses(args.project)
