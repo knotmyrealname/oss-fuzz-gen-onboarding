@@ -17,6 +17,8 @@ import os
 import re
 import logging
 import time
+import stat
+import git
 import subprocess
 import shutil
 
@@ -29,11 +31,14 @@ BASE_DIR = os.path.dirname(__file__)
 BENCHMARK_HEURISTICS = "far-reach-low-coverage,low-cov-with-fuzz-keyword,easy-params-far-reach"
 NUMBER_OF_HARNESSES = 2
 NUM_SAMPLES = 1 # Currently only supports 1
-WORK_DIR = os.path.join(BASE_DIR, "results")
+RESULTS_DIR = os.path.join(BASE_DIR, "results")
 REPORT_DIR = os.path.join(BASE_DIR, "report")
 PERSISTENCE_DIR = os.path.join(BASE_DIR, "gen-projects")
 OSS_FUZZ_PROJECTS_DIR = os.path.join(main.OSS_FUZZ_DIR, "projects")
 GENERATED_HARNESS_DIR = os.path.join(PERSISTENCE_DIR, "SAMPLES")
+SCRIPTS_DIR = os.path.join(BASE_DIR, "scripts")
+WORK_DIR = os.path.join(BASE_DIR, "work")
+INTROSPECTOR_DIR = os.path.join(WORK_DIR, "fuzz-introspector")
 
 logger = logging.getLogger(__name__)
 
@@ -135,17 +140,27 @@ def generate_harness(model: str, project: str, temperature: float = main.DEFAULT
 
     log(f'''Beginning OSS-Fuzz-gen harness generation. This may take a long time''')
     start = time.time()
+
+    ## Set up OSS-Fuzz-gen working directories
+    if not os.path.exists(WORK_DIR):
+        os.makedirs(WORK_DIR)
+    if not os.path.exists(INTROSPECTOR_DIR):
+        git.Repo.clone_from("https://github.com/ossf/fuzz-introspector", INTROSPECTOR_DIR)
     
     ## Runs OSS-Fuzz-gen with custom params
-    subprocess.run([os.path.join(main.OSS_FUZZ_GEN_DIR, "run_all_experiments.py"),
-                    f"--model={model}",
-                    f"--generate-benchmarks={BENCHMARK_HEURISTICS}",
-                    f"--generate-benchmarks-projects={project}",
-                    f"--generate-benchmarks-max={NUMBER_OF_HARNESSES}",
-                    f"--oss-fuzz-dir={main.OSS_FUZZ_DIR}",
-                    f"--temperature={temperature}",
-                    f"--work-dir={WORK_DIR}",
-                    f"--num-samples={NUM_SAMPLES}"])
+    script = os.path.join(SCRIPTS_DIR, "run-project-modified.sh")
+    subprocess.run(["chmod", "+x", script])
+    subprocess.run([script,
+                   main.OSS_FUZZ_GEN_DIR,
+                   main.OSS_FUZZ_DIR,
+                   INTROSPECTOR_DIR,
+                   BENCHMARK_HEURISTICS,
+                   project,
+                   str(NUMBER_OF_HARNESSES),
+                   str(NUM_SAMPLES),
+                   model,
+                   str(temperature),
+                   RESULTS_DIR])
 
     end = time.time()
     log("Completed in %.4f seconds" % (end - start))
@@ -168,7 +183,7 @@ def generate_harness(model: str, project: str, temperature: float = main.DEFAULT
 
         ## Get report from OSS-Fuzz-gen run
         os.chdir(main.OSS_FUZZ_GEN_DIR)
-        subprocess.run(["python","-m", "report.web", "-r", WORK_DIR, "-o", REPORT_DIR])
+        subprocess.run(["python","-m", "report.web", "-r", RESULTS_DIR, "-o", REPORT_DIR])
         log(f"Report Generated in {REPORT_DIR}")
         log(f'''To view the report, either open up the index.html located within in your web browser or run the command:
         python -m http.server -b 127.0.0.1 5000 -d {REPORT_DIR}''')

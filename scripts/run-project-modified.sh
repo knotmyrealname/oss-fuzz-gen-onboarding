@@ -15,42 +15,36 @@
 
 ## This is an modified version of the script inside of oss-fuzz-gen/scripts/run-new-oss-fuzz-project.sh
 
-OSS_FUZZ_GEN_DIR=$PWD
-OSS_FUZZ_GEN_MODEL=${MODEL}
-OSS_FUZZ_DIR=$OSS_FUZZ_GEN_DIR/work/oss-fuzz
-FI_DIR=$OSS_FUZZ_GEN_DIR/work/fuzz-introspector
-BENCHMARK_HEURISTICS=far-reach-low-coverage,low-cov-with-fuzz-keyword,easy-params-far-reach
-VAR_HARNESSES_PER_PROJECT=4
-PROJECTS=${@}
+OSS_FUZZ_GEN_DIR=${1}
+OSS_FUZZ_DIR=${2}
+FI_DIR=${3}
+BENCHMARK_HEURISTICS=${4}
+PROJECT=${5}
+HARNESSES_PER_PROJECT=${6}
+NUM_SAMPLES=${7}
+OSS_FUZZ_GEN_MODEL=${8}
+TEMPERATURE=${9}
+WORK_DIR=${10}
 
-comma_separated=""
-for proj in ${PROJECTS}; do
-  echo ${proj}
-  comma_separated="${comma_separated}${proj},"
-done
-comma_separated=${comma_separated::-1}
 
 
 # Specifify OSS-Fuzz-gen to not clean up the OSS-Fuzz project. Enabling
 # this will cause all changes in the OSS-Fuzz repository to be nullified.
 export OFG_CLEAN_UP_OSS_FUZZ=0
 
-echo "Targeting project: $project"
+echo "Targeting project: $5"
 
 # Generate fresh introspector reports that OFG can use as seed for auto
 # generation.
 echo "Creating introspector reports"
 cd ${OSS_FUZZ_DIR}
 
-
-for p2 in ${PROJECTS}; do
-  python3 $FI_DIR/oss_fuzz_integration/runner.py \
-    introspector $p2 1 --disable-webserver
+python3 $FI_DIR/oss_fuzz_integration/runner.py \
+  introspector $PROJECT 1 --disable-webserver
   # Reset is necessary because some project exeuction
   # could break the display encoding which affect
   # the later oss-fuzz-gen execution.
-  reset
-done
+reset
 
 # Shut down the existing webapp if it's running
 curl --silent http://localhost:8080/api/shutdown || true
@@ -94,14 +88,16 @@ mkdir -p ${OSS_FUZZ_DIR}/venv
 # Run OSS-Fuzz-gen
 # - Generate benchmarks
 # - Use a local version version of OSS-Fuzz (the one in /work/oss-fuzz)
-EXTRA_ARGS="${EXTRA_OFG_ARGS}"
 LLM_NUM_EVA=4 LLM_NUM_EXP=4 ./run_all_experiments.py \
     --model=$OSS_FUZZ_GEN_MODEL \
-    -g ${BENCHMARK_HEURISTICS} \
-    -gp ${comma_separated} \
-    -gm ${VAR_HARNESSES_PER_PROJECT} \
-    -of ${OSS_FUZZ_DIR} \
-    -e http://127.0.0.1:8080/api ${EXTRA_ARGS}
+    --generate-benchmarks ${BENCHMARK_HEURISTICS} \
+    --generate-benchmarks-projects ${PROJECT} \
+    --generate-benchmarks-max ${HARNESSES_PER_PROJECT} \
+    --oss-fuzz-dir ${OSS_FUZZ_DIR} \
+    --temperature ${TEMPERATURE} \
+    --work-dir ${WORK_DIR} \
+    --num-samples ${NUM_SAMPLES} \
+    --introspector-endpoint http://127.0.0.1:8080/api 
 
 echo "Shutting down started webserver"
 curl --silent http://localhost:8080/api/shutdown || true
