@@ -1,9 +1,5 @@
 import unittest
 from unittest.mock import patch, MagicMock
-import os
-import sys
-
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from oss_fuzz_hook import run_project
 
