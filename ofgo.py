@@ -25,7 +25,7 @@ import openai
 
 import harness_gen
 import oss_fuzz_hook
-from project_template_gen import generate_from_templates
+from project_template_gen import generate_from_templates, sanitize_repo_name
 from project_basis_gen import generate_project_basis
 from logger_config import setup_logger
 
@@ -105,6 +105,7 @@ def run_noninteractive(args):
 
 def run_full_suite(args):
     run_basis_gen(args)
+    args.project = sanitize_repo_name(args.repo)
     run_harnessgen(args)
 
 def run_basis_gen(args):
