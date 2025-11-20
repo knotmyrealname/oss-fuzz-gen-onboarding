@@ -69,28 +69,23 @@ def clean_dir(path: str):
     elif os.path.exists(path):
         os.unlink(path)
 
-def symlink_force(src: str, dst: str):
-    """
-    Create a symlink, replacing an existing files safely.
-    """
-    clean_dir(dst)
-    os.symlink(os.path.abspath(src), dst)
-
 # -------------------------------------------------------------------
 # Runner execution 
 # -------------------------------------------------------------------
 def run_runner(repo_url: str, repo_name: str, model: str) -> str:
     """
-    Calls OSS-Fuzz-Gen’s experimental/build_generator/runner.py 
+    Calls OSS-Fuzz-Gen’s experimental/build_generator/runner.py in agent mode
     Return Value (path to generated files):
-        OSS_FUZZ_GEN_DIR/generated-builds-tmp/oss-fuzz-projects/<project>
+        OSS_FUZZ_GEN_DIR/generated-builds-tmp/oss-fuzz-projects/<repo_name>
     """
     
     # Runner command expects repo name as a text file "input.txt"
     input_path = os.path.join(OSS_FUZZ_GEN_DIR, "input.txt")
     with open(input_path, "w") as f:
         f.write(repo_url + "\n")
-
+    
+    # Get rid of previous temporary folder
+    # If the program later crashes, debug info is available in this directory
     tmp_output_dir = os.path.join(OSS_FUZZ_GEN_DIR, "generated-builds-tmp")
     clean_dir(tmp_output_dir)
 
@@ -100,9 +95,10 @@ def run_runner(repo_url: str, repo_name: str, model: str) -> str:
         "-o", "generated-builds-tmp",
         "-m", model,
         "--oss-fuzz", OSS_FUZZ_DIR,
+        "-a",
     ]
 
-    # Run the oss-fuzz-gen command to create the 3 files
+    # Run the oss-fuzz-gen command to create the build files
     log(f"Running OSS-Fuzz-Gen for {repo_name} using model: {model}")
     try:
         subprocess.run(cmd, cwd=OSS_FUZZ_GEN_DIR, check=True)
@@ -114,10 +110,9 @@ def run_runner(repo_url: str, repo_name: str, model: str) -> str:
     if not os.path.isdir(projects_dir) or not os.listdir(projects_dir):
         raise RuntimeError("No generated build directories found — check OSS-Fuzz-Gen output")
     
-    # TODO: Test this to confirm functionality
-    #
-    # Assumes OSS-Fuzz-Gen builds follow the format:
-    #   <project>-empty-build-0
+    # Find generated project names
+    # We loop over any name starting with our repo name, in case of weird duplicate issues
+    #   Should match repo name exactly
     dirs = os.listdir(projects_dir)
     if not dirs:
         raise RuntimeError("OSS-Fuzz-Gen produced no builds")
@@ -127,13 +122,12 @@ def run_runner(repo_url: str, repo_name: str, model: str) -> str:
 
     if not candidates:
         raise RuntimeError(
-            f"No generated directory matched repo '{repo_name}'. Found: {dirs}"
+            f"No generated directory matched repo '{repo_name}'. Found OSS-Fuzz Projects: {dirs}. "
+            f"Check {tmp_output_dir} for debug info."
         )
-
-    # Take empty-build-0
-    candidates.sort()
-    chosen = candidates[0]
-
+    
+    # Should only be 1 existing
+    chosen = candidates[0] 
     output_path = os.path.join(projects_dir, chosen)
     log(f"Generated project basis directory: {output_path}")
 
@@ -142,20 +136,14 @@ def run_runner(repo_url: str, repo_name: str, model: str) -> str:
 # Copy and patch functions
 # -------------------------------------------------------------------
 def copy_outputs(src_dir: str, dst_dir: str) -> None:
-    """Copy Dockerfile, build.sh, and project.yaml into the dst directory."""
-    clean_dir(dst_dir)
-    os.makedirs(dst_dir, exist_ok=True)
+    """Entire entire project build dir to the dst directory."""
+    log(f"Copying files from {src_dir} to {dst_dir}")
 
-    copied = []
-    for fname in ("Dockerfile", "build.sh", "project.yaml"):
-        src = os.path.join(src_dir, fname)
-        dst = os.path.join(dst_dir, fname)
-        if os.path.exists(src):
-            shutil.copy2(src, dst)
-            copied.append(fname)
-    if not copied:
-        raise RuntimeError("No output found in generated directory")
-    log(f"Copied: {', '.join(copied)} to {dst_dir}")
+    # dst_dir confirmed not to exist by main
+    shutil.copytree(src_dir, dst_dir)
+    files = os.listdir(dst_dir)
+    log(f"Copied files: {files}")
+    log(f"Copied: {files} to {dst_dir}")
 
 def patch_project_yaml(yaml_path: str, email: str) -> None:
     """Update the maintainer email in project.yaml."""
@@ -178,30 +166,33 @@ def generate_project_basis(repo_url: str, email: str, model: str = DEFAULT_MODEL
     Copies the output out of oss-fuzz-gen and into out_dir.
     Patches the project.yaml with email as primary_contact
     """
-
+    
+    # Grab repo name
     repo_name = sanitize_repo_name(repo_url)
+    
+    # Create gen-projects dir if it does not exist
+    log(f"[+] Starting OSS-Fuzz basis generation for {repo_name}")
+    if not os.path.exists(GEN_PROJECTS_DIR):
+        os.makedirs(GEN_PROJECTS_DIR)
 
-    # Path to be returned of generated files
+
+    # gen-projects/<repo_name>
     out_dir = os.path.join(GEN_PROJECTS_DIR, repo_name)
 
-    # Symlink 
-    oss_fuzz_project_symlink = os.path.join(OSS_FUZZ_DIR, "projects", repo_name)
+    # do not overwrite previous projects
+    if os.path.exists(out_dir):
+        log(f"Existing project at {out_dir}. Skipping generation")
+        return out_dir
 
-    log(f"[+] Starting OSS-Fuzz basis generation for {repo_name}")
-    
     # Call oss-fuzz-gen's 'runner' for build generation: Get the path of the generated files
     generated_dir = run_runner(repo_url, repo_name, model)
+
 
     # Copy output and patch yaml
     copy_outputs(generated_dir, out_dir)
     patch_project_yaml(os.path.join(out_dir, "project.yaml"), email)
     
-    # Make the symlink to files in oss-fuzz
-    os.makedirs(os.path.join(OSS_FUZZ_DIR, "projects"), exist_ok=True)
-    symlink_force(out_dir, oss_fuzz_project_symlink)
-
     log(f"Generation complete for {repo_name}")
     log(f"Output saved under: {out_dir}")
-    log(f"Symlinked into OSS-Fuzz: {oss_fuzz_project_symlink}")
     
     return out_dir

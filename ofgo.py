@@ -179,12 +179,20 @@ def run_on_args():
     ni.set_defaults(func=run_noninteractive)
 
     # Run the only basis gen
-    ba = subparsers.add_parser('basis', help='Only generate skeleton of the harness (project.yaml, build.sh, Dockerfile)')
+    ba = subparsers.add_parser('basis', help='Generate skeleton of the harness (project.yaml, build.sh, Dockerfile, empty-fuzzers) using OSS-Fuzz-Gen Build_Generator Agent Mode')
     ba.add_argument('--repo', type=str, help='Project repo URL')
     ba.add_argument('--email', type=str, help='Project maintainer email')
-    ba.add_argument('--language', type=str, help='Programming language of project to fuzz')
     ba.add_argument('--model', type=str, default=DEFAULT_MODEL, help='OpenAI model name')
     ba.set_defaults(func=run_basis_gen)
+
+
+    # Run the only template gen
+    te = subparsers.add_parser('template', help='Uses static templates to generate skeleton of the harness (project.yaml, build.sh, Dockerfile, empty-fuzzer)')
+    te.add_argument('--repo', type=str, help='Project repo URL')
+    te.add_argument('--email', type=str, help='Project maintainer email')
+    te.add_argument('--language', type=str, help='Programming language of project to fuzz')
+    te.add_argument('--model', type=str, default=DEFAULT_MODEL, help='OpenAI model name')
+    te.set_defaults(func=run_template_gen)
 
     # Run only OSS-Fuzz-gen
     pe = subparsers.add_parser('pre-existing', help='Run OSS-Fuzz-Gen on pre-existing project')
