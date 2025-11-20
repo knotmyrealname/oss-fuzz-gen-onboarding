@@ -20,10 +20,10 @@ import os
 import subprocess
 import re
 
-import ofgo as main
 from logger_config import setup_logger
 
 BASE_DIR = os.path.dirname(__file__)
+OSS_FUZZ_DIR = os.path.join(BASE_DIR, "oss-fuzz")
 
 logger = setup_logger(__name__)
 CONSOLIDATE_DIR = os.path.join(BASE_DIR, "gen-projects")
@@ -49,7 +49,7 @@ def run_project(project: str = None, harness_type: str = "existing"):
         harness_type: "existing" for standard OSS-Fuzz harnesses, 
                      "generated" for automatically generated harnesses
     """
-    path_to_helper = os.path.join(main.OSS_FUZZ_DIR, "infra", "helper.py")
+    path_to_helper = os.path.join(OSS_FUZZ_DIR, "infra", "helper.py")
     
     if harness_type == "existing":
         log(f"Running existing project {project} with OSS-FUZZ.")
@@ -77,7 +77,7 @@ def run_project(project: str = None, harness_type: str = "existing"):
         else:
             log(f"Success: {c}")
     
-    path_to_fuzzers = os.path.join(main.OSS_FUZZ_DIR, "build", "out", project)
+    path_to_fuzzers = os.path.join(OSS_FUZZ_DIR, "build", "out", project)
     if not os.path.exists(path_to_fuzzers):
         log(f"Fuzzers directory not found: {path_to_fuzzers}")
         return False
