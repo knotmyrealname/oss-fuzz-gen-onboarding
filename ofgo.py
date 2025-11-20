@@ -104,6 +104,7 @@ def run_noninteractive(args):
 def run_full_suite(args):
     run_basis_gen(args)
     run_harnessgen(args)
+    oss_fuzz_hook.run_project(args.project, "generated")
 
 def run_basis_gen(args):
     log(f'Generating project structure with {args.repo}, {args.email}')

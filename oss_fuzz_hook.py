@@ -86,7 +86,7 @@ def run_project(project: str = None, harness_type: str = "existing"):
         # Look for typical OSS-Fuzz harness pattern: fuzz_* or *Fuzzer
         fuzzers = []
         for i in os.listdir(path_to_fuzzers):
-            if i.startswith("fuzz_") or i.endswith("Fuzzer") and '.' not in i:
+            if i.startswith("fuzz_") or i.endswith("Fuzzer") or re.match(r'^fuzz-harness-\d+_\d+\$', i) and '.' not in i:
                 fuzzers.append(i)
         
         if len(fuzzers) == 0:
